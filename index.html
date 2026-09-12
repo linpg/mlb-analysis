@@ -1,1 +1,390 @@
 
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>MLB Analysis｜MLB 賽事分析</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, "Microsoft JhengHei", sans-serif;
+      background: #f4f6f8;
+      color: #222;
+    }
+
+    /* 頂部 */
+    header {
+      background: #0b2a4a;
+      color: white;
+      padding: 18px 30px;
+    }
+
+    .header-content {
+      max-width: 1200px;
+      margin: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .logo span {
+      color: #58a6ff;
+    }
+
+    /* 導覽列 */
+    nav {
+      background: white;
+      border-bottom: 1px solid #ddd;
+    }
+
+    nav ul {
+      max-width: 1200px;
+      margin: auto;
+      display: flex;
+      list-style: none;
+    }
+
+    nav li {
+      padding: 15px 20px;
+      cursor: pointer;
+    }
+
+    nav li:hover {
+      background: #f0f2f5;
+    }
+
+    nav .active {
+      color: #0b63ce;
+      font-weight: bold;
+      border-bottom: 3px solid #0b63ce;
+    }
+
+    /* 主內容 */
+    main {
+      max-width: 1200px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+
+    .page-title {
+      margin-bottom: 8px;
+    }
+
+    .page-description {
+      color: #666;
+      margin-bottom: 25px;
+    }
+
+    /* 日期列 */
+    .date-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 25px;
+      overflow-x: auto;
+    }
+
+    .date-btn {
+      border: none;
+      background: white;
+      padding: 10px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      border: 1px solid #ddd;
+    }
+
+    .date-btn.active {
+      background: #0b63ce;
+      color: white;
+      border-color: #0b63ce;
+    }
+
+    /* 比賽卡片 */
+    .game-card {
+      background: white;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      overflow: hidden;
+    }
+
+    .game-header {
+      background: #f8f9fa;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid #eee;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .game-body {
+      padding: 25px;
+    }
+
+    .teams {
+      display: grid;
+      grid-template-columns: 1fr 100px 1fr;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .team-name {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .team-record {
+      color: #777;
+      margin-top: 8px;
+    }
+
+    .vs {
+      font-size: 18px;
+      color: #999;
+      font-weight: bold;
+    }
+
+    /* 分析資料 */
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+    }
+
+    .analysis-box {
+      background: #f6f8fa;
+      padding: 18px;
+      border-radius: 10px;
+    }
+
+    .analysis-label {
+      color: #777;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .analysis-value {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .positive {
+      color: #16803c;
+    }
+
+    .warning {
+      color: #d97706;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 25px;
+      color: #777;
+      font-size: 14px;
+    }
+
+    /* 手機版 */
+    @media (max-width: 768px) {
+      .header-content {
+        padding: 0 5px;
+      }
+
+      nav ul {
+        overflow-x: auto;
+      }
+
+      nav li {
+        padding: 15px;
+        white-space: nowrap;
+      }
+
+      .teams {
+        grid-template-columns: 1fr 60px 1fr;
+      }
+
+      .team-name {
+        font-size: 18px;
+      }
+
+      .analysis-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- 網站標題 -->
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        MLB <span>ANALYSIS</span>
+      </div>
+
+      <div>
+        Data Driven Baseball
+      </div>
+    </div>
+  </header>
+
+  <!-- 導覽列 -->
+  <nav>
+    <ul>
+      <li class="active">今日賽事</li>
+      <li>歷史資料</li>
+      <li>球隊分析</li>
+      <li>投手分析</li>
+      <li>模型績效</li>
+    </ul>
+  </nav>
+
+  <!-- 主內容 -->
+  <main>
+
+    <h1 class="page-title">今日 MLB 賽事分析</h1>
+
+    <p class="page-description">
+      整合 MLB 官方、PlaySport 與台灣運彩資料進行賽事分析
+    </p>
+
+    <!-- 日期 -->
+    <div class="date-bar">
+      <button class="date-btn">昨天</button>
+      <button class="date-btn active">今天</button>
+      <button class="date-btn">明天</button>
+    </div>
+
+    <!-- 比賽卡片 -->
+    <div class="game-card">
+
+      <div class="game-header">
+        <span>MLB｜例行賽</span>
+        <span>10:10</span>
+      </div>
+
+      <div class="game-body">
+
+        <!-- 球隊 -->
+        <div class="teams">
+
+          <div>
+            <div class="team-name">SEA</div>
+            <div class="team-record">82 - 68</div>
+          </div>
+
+          <div class="vs">VS</div>
+
+          <div>
+            <div class="team-name">NYY</div>
+            <div class="team-record">88 - 62</div>
+          </div>
+
+        </div>
+
+        <!-- 分析 -->
+        <div class="analysis-grid">
+
+          <div class="analysis-box">
+            <div class="analysis-label">勝負模型</div>
+            <div class="analysis-value positive">NYY 64%</div>
+          </div>
+
+          <div class="analysis-box">
+            <div class="analysis-label">讓分分析</div>
+            <div class="analysis-value">NYY -1.5</div>
+          </div>
+
+          <div class="analysis-box">
+            <div class="analysis-label">大小分預測</div>
+            <div class="analysis-value warning">大 8.5</div>
+          </div>
+
+          <div class="analysis-box">
+            <div class="analysis-label">綜合信心</div>
+            <div class="analysis-value">★★★★☆</div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- 第二場範例 -->
+    <div class="game-card">
+
+      <div class="game-header">
+        <span>MLB｜例行賽</span>
+        <span>13:05</span>
+      </div>
+
+      <div class="game-body">
+
+        <div class="teams">
+
+          <div>
+            <div class="team-name">LAD</div>
+            <div class="team-record">90 - 60</div>
+          </div>
+
+          <div class="vs">VS</div>
+
+          <div>
+            <div class="team-name">SF</div>
+            <div class="team-record">75 - 75</div>
+          </div>
+
+        </div>
+
+        <div class="analysis-grid">
+
+          <div class="analysis-box">
+            <div class="analysis-label">勝負模型</div>
+            <div class="analysis-value positive">LAD 69%</div>
+          </div>
+
+          <div class="analysis-box">
+            <div class="analysis-label">讓分分析</div>
+            <div class="analysis-value">LAD -1.5</div>
+          </div>
+
+          <div class="analysis-box">
+            <div class="analysis-label">大小分預測</div>
+            <div class="analysis-value warning">小 8.5</div>
+          </div>
+
+          <div class="analysis-box">
+            <div class="analysis-label">綜合信心</div>
+            <div class="analysis-value">★★★★★</div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    MLB Analysis © 2026
+  </footer>
+
+</body>
+</html>
