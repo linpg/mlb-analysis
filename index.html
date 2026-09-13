@@ -340,6 +340,79 @@ h1 {
   font-weight: bold;
 }
 
+.pitcher-hand {
+  margin-top: 4px;
+
+  font-size: 11px;
+
+  color: #777;
+}
+
+.pitcher-stats {
+  margin-top: 10px;
+
+  border-top: 1px solid #eee;
+
+  padding-top: 8px;
+}
+
+.pitcher-stats-title {
+  font-size: 11px;
+
+  color: #888;
+
+  margin-bottom: 6px;
+}
+
+.pitcher-stat-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(5, 1fr);
+
+  gap: 5px;
+}
+
+.pitcher-stat-item {
+  background: white;
+
+  border: 1px solid #eee;
+
+  border-radius: 4px;
+
+  padding: 5px 3px;
+
+  text-align: center;
+}
+
+.pitcher-stat-label {
+  font-size: 9px;
+
+  color: #999;
+}
+
+.pitcher-stat-value {
+  font-size: 12px;
+
+  font-weight: bold;
+
+  margin-top: 2px;
+}
+
+.pitcher-recent {
+  margin-top: 7px;
+
+  padding: 6px;
+
+  background: white;
+
+  border-radius: 4px;
+
+  font-size: 11px;
+
+  color: #555;
+}
+
 
 /* ========================================
    DATA SECTION
@@ -538,6 +611,11 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .pitcher-stat-grid {
+    grid-template-columns:
+      repeat(5, 1fr);
+  }
+
   .live-info {
     grid-template-columns:
       repeat(2, 1fr);
@@ -568,6 +646,19 @@ h1 {
   .logo {
     width: 48px;
     height: 48px;
+  }
+
+  .pitcher-stat-grid {
+    grid-template-columns:
+      repeat(5, 1fr);
+  }
+
+  .pitcher-stat-label {
+    font-size: 8px;
+  }
+
+  .pitcher-stat-value {
+    font-size: 11px;
   }
 
 }
@@ -755,7 +846,7 @@ const MLB_API =
  * ↓
  * MLB API 查 2026-09-12
  *
- * 不再另外修改。
+ * 不修改。
  * ========================================================
  */
 
@@ -779,6 +870,21 @@ let pageVersion = 0;
  */
 
 const teamAnalysisCache =
+  new Map();
+
+
+/*
+ * ========================================================
+ * 投手資料快取
+ *
+ * key：
+ * pitcherId + season
+ *
+ * 投手資料不需要每 15 秒重新抓。
+ * ========================================================
+ */
+
+const pitcherAnalysisCache =
   new Map();
 
 
@@ -1330,8 +1436,7 @@ function getTaiwanTime(
       minute:
         "2-digit",
 
-      hour12:
-        false
+      hour12: false
     }
   )
   .format(
@@ -1400,7 +1505,7 @@ function getStatusInfo(
 
 
 /* =========================================================
-   先發投手
+   先發投手名稱
 ========================================================= */
 
 function getPitcherName(
@@ -1417,80 +1522,811 @@ function getPitcherName(
 
 
 /* =========================================================
-   局數
+   投手左右投
 ========================================================= */
 
-function getInningText(
-  linescore,
-  status
+function getPitcherHand(
+  pitcher
 ) {
 
+  const hand =
+    pitcher?.pitchHand;
+
+
+  if (!hand) {
+
+    return "投手資料待取得";
+
+  }
+
+
   if (
-    status === "Final"
+    hand.code === "R" ||
+    hand.description === "Right"
   ) {
 
-    return "比賽結束";
+    return "右投";
 
   }
 
 
   if (
-    !linescore?.currentInning
+    hand.code === "L" ||
+    hand.description === "Left"
   ) {
 
-    return "";
+    return "左投";
 
   }
 
 
-  return `${
-    linescore.inningHalf ===
-    "Top"
-      ? "上"
-      : "下"
-  }${linescore.currentInning}局`;
+  return (
+    hand.description ||
+    "投手資料待取得"
+  );
 
 }
 
 
 /* =========================================================
-   球數
+   投手數值格式
 ========================================================= */
 
-function getCount(
-  liveData
+function pitcherStatValue(
+  value
 ) {
 
-  const linescore =
-    liveData?.linescore;
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
 
-
-  if (!linescore) {
-
-    return "-";
+    return "—";
 
   }
 
 
-  const balls =
-    linescore.balls;
+  return value;
+
+}
 
 
-  const strikes =
-    linescore.strikes;
+/* =========================================================
+   投手百分比
+========================================================= */
+
+function calculatePitcherRate(
+  numerator,
+  denominator
+) {
+
+  const n =
+    Number(numerator);
+
+
+  const d =
+    Number(denominator);
 
 
   if (
-    balls === undefined ||
-    strikes === undefined
+    !Number.isFinite(n) ||
+    !Number.isFinite(d) ||
+    d <= 0
   ) {
 
-    return "-";
+    return "—";
 
   }
 
 
-  return `${balls}-${strikes}`;
+  return (
+    (n / d) *
+    100
+  ).toFixed(1) + "%";
+
+}
+
+
+/* =========================================================
+   投手 IP 格式
+========================================================= */
+
+function formatPitcherIP(
+  value
+) {
+
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+
+    return "—";
+
+  }
+
+
+  return value;
+
+}
+
+
+/* =========================================================
+   取得先發投手 Season Stats
+========================================================= */
+
+async function getPitcherSeasonStats(
+  pitcherId
+) {
+
+  if (!pitcherId) {
+
+    return {};
+
+  }
+
+
+  const cacheKey =
+    `pitcher-season-${pitcherId}-2026`;
+
+
+  if (
+    pitcherAnalysisCache.has(
+      cacheKey
+    )
+  ) {
+
+    return pitcherAnalysisCache.get(
+      cacheKey
+    );
+
+  }
+
+
+  const url =
+    `${MLB_API}/people/${pitcherId}/stats` +
+    `?stats=season` +
+    `&group=pitching` +
+    `&season=2026`;
+
+
+  try {
+
+    const data =
+      await getJSON(
+        url
+      );
+
+
+    const stats =
+      data.stats?.[0]
+        ?.splits?.[0]
+        ?.stat || {};
+
+
+    pitcherAnalysisCache.set(
+      cacheKey,
+      stats
+    );
+
+
+    return stats;
+
+  }
+
+
+  catch(error) {
+
+    console.warn(
+      "先發投手 Season Stats 取得失敗",
+      pitcherId,
+      error
+    );
+
+
+    return {};
+
+  }
+
+}
+
+
+/* =========================================================
+   取得先發投手 Game Log
+========================================================= */
+
+async function getPitcherGameLog(
+  pitcherId
+) {
+
+  if (!pitcherId) {
+
+    return [];
+
+  }
+
+
+  const cacheKey =
+    `pitcher-gamelog-${pitcherId}-2026`;
+
+
+  if (
+    pitcherAnalysisCache.has(
+      cacheKey
+    )
+  ) {
+
+    return pitcherAnalysisCache.get(
+      cacheKey
+    );
+
+  }
+
+
+  const url =
+    `${MLB_API}/people/${pitcherId}/stats` +
+    `?stats=gameLog` +
+    `&group=pitching` +
+    `&season=2026` +
+    `&gameType=R`;
+
+
+  try {
+
+    const data =
+      await getJSON(
+        url
+      );
+
+
+    const splits =
+      data.stats?.[0]
+        ?.splits || [];
+
+
+    const starts =
+      splits
+        .filter(
+          split => {
+
+            const stat =
+              split.stat || {};
+
+
+            return (
+              Number(
+                stat.gamesStarted ?? 0
+              ) > 0
+            );
+
+          }
+        )
+        .sort(
+          (a, b) =>
+            new Date(
+              b.date || 0
+            ) -
+            new Date(
+              a.date || 0
+            )
+        )
+        .slice(
+          0,
+          5
+        );
+
+
+    pitcherAnalysisCache.set(
+      cacheKey,
+      starts
+    );
+
+
+    return starts;
+
+  }
+
+
+  catch(error) {
+
+    console.warn(
+      "先發投手 Game Log 取得失敗",
+      pitcherId,
+      error
+    );
+
+
+    return [];
+
+  }
+
+}
+
+
+/* =========================================================
+   取得完整先發投手分析
+========================================================= */
+
+async function getPitcherAnalysisData(
+  pitcher
+) {
+
+  if (
+    !pitcher?.id
+  ) {
+
+    return {
+
+      id: null,
+
+      name:
+        getPitcherName(
+          pitcher
+        ),
+
+      hand:
+        getPitcherHand(
+          pitcher
+        ),
+
+      season: {},
+
+      recentStarts: []
+
+    };
+
+  }
+
+
+  const [
+    season,
+    recentStarts
+  ] = await Promise.all([
+
+    getPitcherSeasonStats(
+      pitcher.id
+    ),
+
+    getPitcherGameLog(
+      pitcher.id
+    )
+
+  ]);
+
+
+  return {
+
+    id:
+      pitcher.id,
+
+    name:
+      getPitcherName(
+        pitcher
+      ),
+
+    hand:
+      getPitcherHand(
+        pitcher
+      ),
+
+    season,
+
+    recentStarts
+
+  };
+
+}
+
+
+/* =========================================================
+   近 5 場先發摘要
+========================================================= */
+
+function getRecentStartsSummary(
+  recentStarts
+) {
+
+  if (
+    !recentStarts ||
+    !recentStarts.length
+  ) {
+
+    return "近5場：—";
+
+  }
+
+
+  let wins = 0;
+
+  let losses = 0;
+
+  let totalIP = 0;
+
+  let totalER = 0;
+
+  let totalSO = 0;
+
+
+  recentStarts.forEach(
+    split => {
+
+      const stat =
+        split.stat || {};
+
+
+      const decision =
+        stat.decision ||
+        split.isWinner;
+
+
+      if (
+        decision === "W" ||
+        stat.wins > 0
+      ) {
+
+        wins++;
+
+      }
+
+
+      if (
+        decision === "L" ||
+        stat.losses > 0
+      ) {
+
+        losses++;
+
+      }
+
+
+      totalIP +=
+        inningsToNumber(
+          stat.inningsPitched
+        );
+
+
+      totalER +=
+        Number(
+          stat.earnedRuns ?? 0
+        );
+
+
+      totalSO +=
+        Number(
+          stat.strikeOuts ?? 0
+        );
+
+    }
+  );
+
+
+  let recentERA =
+    "—";
+
+
+  if (
+    totalIP > 0
+  ) {
+
+    recentERA =
+      (
+        totalER *
+        9 /
+        totalIP
+      ).toFixed(2);
+
+  }
+
+
+  return (
+    `近${recentStarts.length}場：` +
+    `${wins}-${losses}` +
+    `｜ERA ${recentERA}` +
+    `｜SO ${totalSO}`
+  );
+
+}
+
+
+/* =========================================================
+   Baseball IP 轉換
+ *
+ * MLB：
+ * 5.0 = 5 innings
+ * 5.1 = 5 1/3
+ * 5.2 = 5 2/3
+ * =========================================================
+ */
+
+function inningsToNumber(
+  value
+) {
+
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+
+    return 0;
+
+  }
+
+
+  const text =
+    String(value);
+
+
+  if (
+    !text.includes(".")
+  ) {
+
+    return Number(text) || 0;
+
+  }
+
+
+  const parts =
+    text.split(".");
+
+
+  const whole =
+    Number(parts[0]) || 0;
+
+
+  const fraction =
+    Number(parts[1]);
+
+
+  if (
+    fraction === 1
+  ) {
+
+    return whole + 1 / 3;
+
+  }
+
+
+  if (
+    fraction === 2
+  ) {
+
+    return whole + 2 / 3;
+
+  }
+
+
+  return Number(value) || 0;
+
+}
+
+
+/* =========================================================
+   渲染投手資料
+========================================================= */
+
+function renderPitcherAnalysis(
+  card,
+  side,
+  pitcherData
+) {
+
+  if (!pitcherData) {
+
+    return;
+
+  }
+
+
+  const prefix =
+    side === "away"
+      ? "away"
+      : "home";
+
+
+  /*
+   * 投手名稱
+   */
+
+  const nameElement =
+    card.querySelector(
+      `.${prefix}-pitcher-name`
+    );
+
+
+  if (nameElement) {
+
+    nameElement.textContent =
+      pitcherData.name ||
+      "尚未公布";
+
+  }
+
+
+  /*
+   * 左右投
+   */
+
+  const handElement =
+    card.querySelector(
+      `.${prefix}-pitcher-hand`
+    );
+
+
+  if (handElement) {
+
+    handElement.textContent =
+      pitcherData.hand ||
+      "投手資料待取得";
+
+  }
+
+
+  const stat =
+    pitcherData.season ||
+    {};
+
+
+  /*
+   * K%
+   *
+   * K% =
+   * strikeOuts / battersFaced
+   */
+
+  const kPercent =
+    calculatePitcherRate(
+      stat.strikeOuts,
+      stat.battersFaced
+    );
+
+
+  /*
+   * BB%
+   */
+
+  const bbPercent =
+    calculatePitcherRate(
+      stat.baseOnBalls,
+      stat.battersFaced
+    );
+
+
+  /*
+   * W-L
+   */
+
+  const wins =
+    stat.wins ??
+    "—";
+
+
+  const losses =
+    stat.losses ??
+    "—";
+
+
+  const record =
+    wins === "—" &&
+    losses === "—"
+      ? "—"
+      : `${wins}-${losses}`;
+
+
+  /*
+   * FIP
+   *
+   * API 有提供就直接使用。
+   * 沒有就顯示 —。
+   */
+
+  const fip =
+    stat.fip !== undefined &&
+    stat.fip !== null
+      ? Number(stat.fip).toFixed(2)
+      : "—";
+
+
+  /*
+   * 填入統計
+   */
+
+  const values = {
+
+    era:
+      stat.era,
+
+    whip:
+      stat.whip,
+
+    fip:
+      fip,
+
+    k:
+      kPercent,
+
+    bb:
+      bbPercent,
+
+    ip:
+      formatPitcherIP(
+        stat.inningsPitched
+      ),
+
+    so:
+      stat.strikeOuts,
+
+    walks:
+      stat.baseOnBalls,
+
+    hr:
+      stat.homeRuns,
+
+    record:
+      record
+
+  };
+
+
+  Object.keys(values)
+    .forEach(
+      key => {
+
+        const element =
+          card.querySelector(
+            `.${prefix}-pitcher-${key}`
+          );
+
+
+        if (element) {
+
+          element.textContent =
+            pitcherStatValue(
+              values[key]
+            );
+
+        }
+
+      }
+    );
+
+
+  /*
+   * 近5場
+   */
+
+  const recentElement =
+    card.querySelector(
+      `.${prefix}-pitcher-recent`
+    );
+
+
+  if (recentElement) {
+
+    recentElement.textContent =
+      getRecentStartsSummary(
+        pitcherData.recentStarts
+      );
+
+  }
+
+
+  /*
+   * 移除載入文字
+   */
+
+  const loading =
+    card.querySelector(
+      `.${prefix}-pitcher-loading`
+    );
+
+
+  if (loading) {
+
+    loading.remove();
+
+  }
 
 }
 
@@ -2358,12 +3194,6 @@ function renderTeamAnalysis(
   }
 
 
-  /*
-   * ===============================
-   * 2026 戰績
-   * ===============================
-   */
-
   const awayRecord =
     `${awayData.record.wins}-${awayData.record.losses}`;
 
@@ -2388,12 +3218,6 @@ function renderTeamAnalysis(
       homeRecord;
 
 
-  /*
-   * ===============================
-   * 主 / 客
-   * ===============================
-   */
-
   card
     .querySelector(
       ".away-home-away"
@@ -2410,12 +3234,6 @@ function renderTeamAnalysis(
       `主 ${homeData.homeRecord.wins}-${homeData.homeRecord.losses}`;
 
 
-  /*
-   * ===============================
-   * Last 10
-   * ===============================
-   */
-
   card
     .querySelector(
       ".away-last10"
@@ -2431,12 +3249,6 @@ function renderTeamAnalysis(
     .textContent =
       `${homeData.form.wins}-${homeData.form.losses}`;
 
-
-  /*
-   * ===============================
-   * Streak
-   * ===============================
-   */
 
   const awayStreak =
     awayData.form.streakCount
@@ -2474,12 +3286,6 @@ function renderTeamAnalysis(
       homeStreak;
 
 
-  /*
-   * ===============================
-   * H2H
-   * ===============================
-   */
-
   card
     .querySelector(
       ".away-h2h"
@@ -2495,12 +3301,6 @@ function renderTeamAnalysis(
     .textContent =
       `${homeData.h2h.wins}-${homeData.h2h.losses}`;
 
-
-  /*
-   * ===============================
-   * 打擊
-   * ===============================
-   */
 
   const awayHitting =
     awayData.hitting ||
@@ -2592,12 +3392,6 @@ function renderTeamAnalysis(
       );
 
 
-  /*
-   * ===============================
-   * 平均得 / 失分
-   * ===============================
-   */
-
   const awayRuns =
     average(
       awayData.record.runsScored,
@@ -2642,12 +3436,6 @@ function renderTeamAnalysis(
       `${homeRuns} / ${homeAllowed}`;
 
 
-  /*
-   * ===============================
-   * 近10得 / 失分
-   * ===============================
-   */
-
   const awayRecentRuns =
     average(
       awayData.form.runsFor,
@@ -2691,10 +3479,6 @@ function renderTeamAnalysis(
     .textContent =
       `${homeRecentRuns} / ${homeRecentAllowed}`;
 
-
-  /*
-   * 載入完成
-   */
 
   const loading =
     card.querySelector(
@@ -2805,6 +3589,18 @@ async function createGameCard(
 
   const homePitcherName =
     getPitcherName(
+      homePitcher
+    );
+
+
+  const awayPitcherHand =
+    getPitcherHand(
+      awayPitcher
+    );
+
+
+  const homePitcherHand =
+    getPitcherHand(
       homePitcher
     );
 
@@ -2968,18 +3764,136 @@ async function createGameCard(
 
     <div class="pitcher">
 
+      <!-- 客隊先發 -->
+
       <div class="pitcher-box">
 
         <div class="pitcher-title">
           客隊先發
         </div>
 
-        <div class="pitcher-name">
+        <div class="pitcher-name away-pitcher-name">
           ${awayPitcherName}
+        </div>
+
+        <div class="pitcher-hand away-pitcher-hand">
+          ${awayPitcherHand}
+        </div>
+
+        <div class="pitcher-stats">
+
+          <div class="pitcher-stats-title">
+            📊 2026 投手數據
+          </div>
+
+          <div class="pitcher-stat-grid">
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                ERA
+              </div>
+              <div class="pitcher-stat-value away-pitcher-era">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                WHIP
+              </div>
+              <div class="pitcher-stat-value away-pitcher-whip">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                FIP
+              </div>
+              <div class="pitcher-stat-value away-pitcher-fip">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                K%
+              </div>
+              <div class="pitcher-stat-value away-pitcher-k">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                BB%
+              </div>
+              <div class="pitcher-stat-value away-pitcher-bb">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                IP
+              </div>
+              <div class="pitcher-stat-value away-pitcher-ip">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                SO
+              </div>
+              <div class="pitcher-stat-value away-pitcher-so">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                BB
+              </div>
+              <div class="pitcher-stat-value away-pitcher-walks">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                HR
+              </div>
+              <div class="pitcher-stat-value away-pitcher-hr">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                W-L
+              </div>
+              <div class="pitcher-stat-value away-pitcher-record">
+                —
+              </div>
+            </div>
+
+          </div>
+
+          <div class="pitcher-recent away-pitcher-recent">
+            近5場：資料載入中
+          </div>
+
+          <div class="data-loading away-pitcher-loading">
+            正在取得投手資料...
+          </div>
+
         </div>
 
       </div>
 
+
+      <!-- 主隊先發 -->
 
       <div class="pitcher-box">
 
@@ -2987,8 +3901,122 @@ async function createGameCard(
           主隊先發
         </div>
 
-        <div class="pitcher-name">
+        <div class="pitcher-name home-pitcher-name">
           ${homePitcherName}
+        </div>
+
+        <div class="pitcher-hand home-pitcher-hand">
+          ${homePitcherHand}
+        </div>
+
+        <div class="pitcher-stats">
+
+          <div class="pitcher-stats-title">
+            📊 2026 投手數據
+          </div>
+
+          <div class="pitcher-stat-grid">
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                ERA
+              </div>
+              <div class="pitcher-stat-value home-pitcher-era">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                WHIP
+              </div>
+              <div class="pitcher-stat-value home-pitcher-whip">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                FIP
+              </div>
+              <div class="pitcher-stat-value home-pitcher-fip">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                K%
+              </div>
+              <div class="pitcher-stat-value home-pitcher-k">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                BB%
+              </div>
+              <div class="pitcher-stat-value home-pitcher-bb">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                IP
+              </div>
+              <div class="pitcher-stat-value home-pitcher-ip">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                SO
+              </div>
+              <div class="pitcher-stat-value home-pitcher-so">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                BB
+              </div>
+              <div class="pitcher-stat-value home-pitcher-walks">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                HR
+              </div>
+              <div class="pitcher-stat-value home-pitcher-hr">
+                —
+              </div>
+            </div>
+
+            <div class="pitcher-stat-item">
+              <div class="pitcher-stat-label">
+                W-L
+              </div>
+              <div class="pitcher-stat-value home-pitcher-record">
+                —
+              </div>
+            </div>
+
+          </div>
+
+          <div class="pitcher-recent home-pitcher-recent">
+            近5場：資料載入中
+          </div>
+
+          <div class="data-loading home-pitcher-loading">
+            正在取得投手資料...
+          </div>
+
         </div>
 
       </div>
@@ -3535,7 +4563,14 @@ async function createGameCard(
 
   /*
    * =====================================
-   * 取得團隊分析資料
+   * 同時取得：
+   *
+   * 1. 球隊資料
+   * 2. 客隊投手資料
+   * 3. 主隊投手資料
+   *
+   * 投手資料函式本身有錯誤保護，
+   * 不會因為投手 API 失敗而讓整張卡片失敗。
    * =====================================
    */
 
@@ -3543,7 +4578,9 @@ async function createGameCard(
 
     const [
       awayTeamData,
-      homeTeamData
+      homeTeamData,
+      awayPitcherData,
+      homePitcherData
     ] = await Promise.all([
 
       getTeamAnalysisData(
@@ -3554,6 +4591,14 @@ async function createGameCard(
       getTeamAnalysisData(
         home.team.id,
         away.team.id
+      ),
+
+      getPitcherAnalysisData(
+        awayPitcher
+      ),
+
+      getPitcherAnalysisData(
+        homePitcher
       )
 
     ]);
@@ -3565,38 +4610,166 @@ async function createGameCard(
       homeTeamData
     );
 
+
+    renderPitcherAnalysis(
+      card,
+      "away",
+      awayPitcherData
+    );
+
+
+    renderPitcherAnalysis(
+      card,
+      "home",
+      homePitcherData
+    );
+
   }
 
 
   catch(error) {
 
     console.warn(
-      "團隊資料載入失敗",
+      "分析資料載入失敗",
       game.gamePk,
       error
     );
 
 
-    const loading =
+    /*
+     * 即使分析資料失敗，
+     * 比賽卡片仍然保留。
+     */
+
+    const teamLoading =
       card.querySelector(
         ".team-data-loading"
       );
 
 
-    if (loading) {
+    if (teamLoading) {
 
-      loading.textContent =
+      teamLoading.textContent =
         "團隊資料暫時無法取得";
 
-      loading.className =
+      teamLoading.className =
         "data-error";
 
     }
+
+
+    const pitcherLoading =
+      card.querySelectorAll(
+        ".data-loading"
+      );
+
+
+    pitcherLoading.forEach(
+      element => {
+
+        if (
+          element.classList.contains(
+            "away-pitcher-loading"
+          ) ||
+          element.classList.contains(
+            "home-pitcher-loading"
+          )
+        ) {
+
+          element.textContent =
+            "投手資料暫時無法取得";
+
+          element.className =
+            "data-error";
+
+        }
+
+      }
+    );
 
   }
 
 
   return card;
+
+}
+
+
+/* =========================================================
+   局數
+========================================================= */
+
+function getInningText(
+  linescore,
+  status
+) {
+
+  if (
+    status === "Final"
+  ) {
+
+    return "比賽結束";
+
+  }
+
+
+  if (
+    !linescore?.currentInning
+  ) {
+
+    return "";
+
+  }
+
+
+  return `${
+    linescore.inningHalf ===
+    "Top"
+      ? "上"
+      : "下"
+  }${linescore.currentInning}局`;
+
+}
+
+
+/* =========================================================
+   球數
+========================================================= */
+
+function getCount(
+  liveData
+) {
+
+  const linescore =
+    liveData?.linescore;
+
+
+  if (!linescore) {
+
+    return "-";
+
+  }
+
+
+  const balls =
+    linescore.balls;
+
+
+  const strikes =
+    linescore.strikes;
+
+
+  if (
+    balls === undefined ||
+    strikes === undefined
+  ) {
+
+    return "-";
+
+  }
+
+
+  return `${balls}-${strikes}`;
 
 }
 
