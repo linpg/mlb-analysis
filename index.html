@@ -627,7 +627,6 @@ h1 {
 
 <div class="summary">
 
-
   <div class="summary-box">
 
     <div class="summary-title">
@@ -691,7 +690,6 @@ h1 {
 
   </div>
 
-
 </div>
 
 
@@ -731,17 +729,25 @@ const MLB_API =
 
 
 /*
- * PlaySport 日期
+ * ================================================
+ * 非常重要
  *
- * 這裡使用 YYYY-MM-DD
+ * selectedDate = 「PlaySport / 台灣日期」
  *
  * 例如：
  *
  * 2026-09-13
  *
- * 會變成：
+ * 對應：
  *
- * 20260913
+ * PlaySport 20260913
+ *
+ * MLB 官方 schedule 要查：
+ *
+ * 2026-09-12
+ *
+ * 因為 MLB 美國當地日期比台灣慢一天。
+ * ================================================
  */
 
 let selectedDate =
@@ -753,6 +759,14 @@ let selectedDate =
  */
 
 let liveUpdateTimer = null;
+
+
+/*
+ * 防止切換日期後，
+ * 舊的更新程序繼續寫入畫面
+ */
+
+let pageVersion = 0;
 
 
 /* =========================================================
@@ -771,6 +785,30 @@ let liveUpdateTimer = null;
 function dateToPlaySport(date) {
 
   return date.replaceAll("-", "");
+
+}
+
+
+/*
+ * PlaySport 日期
+ *
+ * ↓
+ *
+ * MLB API 查詢日期
+ *
+ * 例：
+ *
+ * PlaySport 2026-09-13
+ *
+ * MLB API 2026-09-12
+ */
+
+function getMLBQueryDate() {
+
+  return addDays(
+    selectedDate,
+    -1
+  );
 
 }
 
@@ -917,10 +955,136 @@ async function getJSON(url) {
 
 
 /* =========================================================
+   取得指定日期的 MLB 賽程
+========================================================= */
+
+async function getMLBSchedule() {
+
+  /*
+   * 注意：
+   *
+   * 這裡不能用 selectedDate。
+   *
+   * 必須用：
+   *
+   * getMLBQueryDate()
+   */
+
+  const mlbQueryDate =
+    getMLBQueryDate();
+
+
+  const url =
+    `${MLB_API}/schedule` +
+    `?sportId=1` +
+    `&date=${mlbQueryDate}` +
+    `&hydrate=team,probablePitcher`;
+
+
+  console.log(
+    "PlaySport 日期：",
+    selectedDate
+  );
+
+
+  console.log(
+    "MLB API 查詢日期：",
+    mlbQueryDate
+  );
+
+
+  const data =
+    await getJSON(url);
+
+
+  let games = [];
+
+
+  if (data.dates) {
+
+    data.dates.forEach(day => {
+
+      if (day.games) {
+
+        games =
+          games.concat(
+            day.games
+          );
+
+      }
+
+    });
+
+  }
+
+
+  /*
+   * 只保留 MLB 比賽
+   */
+
+  games =
+    games.filter(
+      game =>
+        game.sport?.id === 1 ||
+        game.sport?.name === "Major League Baseball" ||
+        game.gameType === "R"
+    );
+
+
+  /*
+   * 排序
+   *
+   * 注意：
+   *
+   * MLB gameDate 是美國時間
+   *
+   * 這裡排序後再顯示台灣時間。
+   */
+
+  games.sort(
+    (a, b) =>
+      new Date(a.gameDate) -
+      new Date(b.gameDate)
+  );
+
+
+  return games;
+
+}
+
+
+/* =========================================================
    載入 MLB 比賽
 ========================================================= */
 
 async function loadMLBGames() {
+
+  /*
+   * 每次切日期，
+   * 版本號 +1
+   */
+
+  pageVersion++;
+
+
+  const currentVersion =
+    pageVersion;
+
+
+  /*
+   * 清掉舊的即時更新
+   */
+
+  if (liveUpdateTimer) {
+
+    clearInterval(
+      liveUpdateTimer
+    );
+
+    liveUpdateTimer = null;
+
+  }
+
 
   const gamesBox =
     document.getElementById("games");
@@ -934,6 +1098,11 @@ async function loadMLBGames() {
       ${formatDate(selectedDate)}
       MLB 比賽...
 
+      <br><br>
+
+      PlaySport：
+      ${dateToPlaySport(selectedDate)}
+
     </div>
 
   `;
@@ -945,57 +1114,34 @@ async function loadMLBGames() {
   try {
 
     /*
-     * MLB 官方 API
+     * 取得正確日期的 MLB 賽程
      */
 
-    const url =
-      `${MLB_API}/schedule` +
-      `?sportId=1` +
-      `&date=${selectedDate}` +
-      `&hydrate=team,probablePitcher`;
-
-
-    const data =
-      await getJSON(url);
-
-
-    let games = [];
-
-
-    if (data.dates) {
-
-      data.dates.forEach(day => {
-
-        if (day.games) {
-
-          games =
-            games.concat(
-              day.games
-            );
-
-        }
-
-      });
-
-    }
+    const games =
+      await getMLBSchedule();
 
 
     /*
-     * 排序
+     * 如果使用者已經切換日期，
+     * 舊請求不要再寫畫面
      */
 
-    games.sort(
-      (a, b) =>
-        new Date(a.gameDate) -
-        new Date(b.gameDate)
-    );
+    if (
+      currentVersion !== pageVersion
+    ) {
+
+      return;
+
+    }
 
 
     /*
      * 統計
      */
 
-    updateSummary(games);
+    updateSummary(
+      games
+    );
 
 
     /*
@@ -1018,6 +1164,11 @@ async function loadMLBGames() {
             ${dateToPlaySport(selectedDate)}
           </p>
 
+          <p>
+            MLB API 查詢日期：
+            ${formatDate(getMLBQueryDate())}
+          </p>
+
         </div>
 
       `;
@@ -1032,31 +1183,56 @@ async function loadMLBGames() {
 
     /*
      * 建立比賽卡片
+     *
+     * 使用 Promise.all
+     * 避免一場一場慢慢等
      */
 
-    for (
-      const game of games
+    const cards =
+      await Promise.all(
+        games.map(
+          game =>
+            createGameCard(
+              game
+            )
+        )
+      );
+
+
+    /*
+     * 再確認日期沒有被切換
+     */
+
+    if (
+      currentVersion !== pageVersion
     ) {
 
-      const card =
-        await createGameCard(
-          game
-        );
+      return;
 
+    }
+
+
+    cards.forEach(card => {
 
       gamesBox.appendChild(
         card
       );
 
-    }
+    });
 
 
     /*
-     * 更新最後刷新時間
+     * 更新時間
      */
 
     updateRefreshTime();
 
+
+    /*
+     * 重新啟動即時更新
+     */
+
+    startLiveRefresh();
 
   }
 
@@ -1064,6 +1240,15 @@ async function loadMLBGames() {
   catch(error) {
 
     console.error(error);
+
+
+    if (
+      currentVersion !== pageVersion
+    ) {
+
+      return;
+
+    }
 
 
     gamesBox.innerHTML = `
@@ -1076,6 +1261,16 @@ async function loadMLBGames() {
 
         <p>
           ${error.message}
+        </p>
+
+        <p>
+          PlaySport 日期：
+          ${dateToPlaySport(selectedDate)}
+        </p>
+
+        <p>
+          MLB API 查詢：
+          ${formatDate(getMLBQueryDate())}
         </p>
 
         <button
@@ -1097,7 +1292,9 @@ async function loadMLBGames() {
    Summary
 ========================================================= */
 
-function updateSummary(games) {
+function updateSummary(
+  games
+) {
 
   let preview = 0;
 
@@ -1166,6 +1363,179 @@ function updateSummary(games) {
 
 
 /* =========================================================
+   台灣時間
+========================================================= */
+
+function getTaiwanTime(
+  gameDate
+) {
+
+  return new Intl.DateTimeFormat(
+    "zh-TW",
+    {
+      timeZone:
+        "Asia/Taipei",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+
+      hour12:
+        false
+    }
+  )
+  .format(
+    new Date(gameDate)
+  );
+
+}
+
+
+/* =========================================================
+   比賽狀態
+========================================================= */
+
+function getStatusInfo(
+  game
+) {
+
+  const status =
+    game.status?.abstractGameState ||
+    "Preview";
+
+
+  if (
+    status === "Live"
+  ) {
+
+    return {
+      text: "🔴 進行中",
+      className: "status-live"
+    };
+
+  }
+
+
+  if (
+    status === "Final"
+  ) {
+
+    return {
+      text: "✅ 比賽結束",
+      className: "status-final"
+    };
+
+  }
+
+
+  return {
+    text: "尚未開打",
+    className: "status-preview"
+  };
+
+}
+
+
+/* =========================================================
+   取得先發投手
+========================================================= */
+
+function getPitcherName(
+  pitcher
+) {
+
+  return (
+    pitcher?.fullName ||
+    pitcher?.name ||
+    "尚未公布"
+  );
+
+}
+
+
+/* =========================================================
+   取得局數
+========================================================= */
+
+function getInningText(
+  linescore,
+  status
+) {
+
+  if (
+    status === "Final"
+  ) {
+
+    return "比賽結束";
+
+  }
+
+
+  if (
+    !linescore?.currentInning
+  ) {
+
+    return "";
+
+  }
+
+
+  return `${
+    linescore.inningHalf === "Top"
+      ? "上"
+      : "下"
+  }${linescore.currentInning}局`;
+
+}
+
+
+/* =========================================================
+   取得球數
+========================================================= */
+
+function getCount(
+  liveData
+) {
+
+  const linescore =
+    liveData?.linescore;
+
+
+  if (
+    !linescore
+  ) {
+
+    return "-";
+
+  }
+
+
+  const balls =
+    linescore.balls;
+
+
+  const strikes =
+    linescore.strikes;
+
+
+  if (
+    balls === undefined ||
+    strikes === undefined
+  ) {
+
+    return "-";
+
+  }
+
+
+  return `${balls}-${strikes}`;
+
+}
+
+
+/* =========================================================
    建立比賽卡片
 ========================================================= */
 
@@ -1220,44 +1590,10 @@ async function createGameCard(
     "Preview";
 
 
-  /*
-   * 狀態
-   */
-
-  let statusText =
-    "尚未開打";
-
-
-  let statusClass =
-    "status-preview";
-
-
-  if (
-    status === "Live"
-  ) {
-
-    statusText =
-      "🔴 進行中";
-
-
-    statusClass =
-      "status-live";
-
-  }
-
-
-  else if (
-    status === "Final"
-  ) {
-
-    statusText =
-      "✅ 比賽結束";
-
-
-    statusClass =
-      "status-final";
-
-  }
+  const statusInfo =
+    getStatusInfo(
+      game
+    );
 
 
   /*
@@ -1265,26 +1601,8 @@ async function createGameCard(
    */
 
   const taiwanTime =
-    new Intl.DateTimeFormat(
-      "zh-TW",
-      {
-        timeZone:
-          "Asia/Taipei",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-
-        hour12:
-          false
-      }
-    )
-    .format(
-      new Date(
-        game.gameDate
-      )
+    getTaiwanTime(
+      game.gameDate
     );
 
 
@@ -1305,13 +1623,15 @@ async function createGameCard(
 
 
   const awayPitcherName =
-    awayPitcher?.fullName ||
-    "尚未公布";
+    getPitcherName(
+      awayPitcher
+    );
 
 
   const homePitcherName =
-    homePitcher?.fullName ||
-    "尚未公布";
+    getPitcherName(
+      homePitcher
+    );
 
 
   /*
@@ -1337,43 +1657,11 @@ async function createGameCard(
    * 局數
    */
 
-  let inningText = "";
-
-
-  if (
-    liveData.linescore
-  ) {
-
-    const inning =
-      liveData
-        .linescore
-        .currentInning;
-
-
-    const half =
-      liveData
-        .linescore
-        .inningHalf;
-
-
-    if (inning) {
-
-      inningText =
-        `${half === "Top" ? "上" : "下"}${inning}局`;
-
-    }
-
-  }
-
-
-  if (
-    status === "Final"
-  ) {
-
-    inningText =
-      "比賽結束";
-
-  }
+  const inningText =
+    getInningText(
+      liveData.linescore,
+      status
+    );
 
 
   /*
@@ -1391,16 +1679,26 @@ async function createGameCard(
 
 
   /*
-   * 非常重要：
-   *
-   * 用 gamePk 綁定這一場
-   *
-   * 之後即時更新
-   * 就可以找到它
+   * gamePk 綁定
    */
 
   card.setAttribute(
     "data-game-id",
+    game.gamePk
+  );
+
+
+  /*
+   * PlaySport Game ID
+   *
+   * 20260913 + 比賽序號
+   *
+   * MLB gamePk 與 PlaySport gameid
+   * 不一定相同，因此目前只作顯示用途。
+   */
+
+  card.setAttribute(
+    "data-mlb-game-id",
     game.gamePk
   );
 
@@ -1428,9 +1726,9 @@ async function createGameCard(
 
 
       <div
-        class="game-status ${statusClass}"
+        class="game-status ${statusInfo.className}"
       >
-        ${statusText}
+        ${statusInfo.text}
       </div>
 
     </div>
@@ -1596,9 +1894,11 @@ async function createGameCard(
             <div
               class="live-value live-outs"
             >
-              ${liveData
-                .linescore
-                ?.outs ?? "-"}
+              ${
+                liveData
+                  .linescore
+                  ?.outs ?? "-"
+              }
             </div>
 
           </div>
@@ -1628,7 +1928,7 @@ async function createGameCard(
             </div>
 
             <div
-              class="live-value"
+              class="live-value live-state"
             >
               LIVE
             </div>
@@ -1952,21 +2252,28 @@ async function createGameCard(
           ?
 
           `
-          比賽尚未開始。<br>
-          目前已取得 MLB 官方：
-          <br>
-          ✔ 球隊
-          <br>
-          ✔ 球隊 Logo
-          <br>
-          ✔ 台灣時間
-          <br>
+          比賽尚未開始。<br><br>
+
+          目前已取得 MLB 官方：<br>
+
+          ✔ 球隊<br>
+
+          ✔ 球隊 Logo<br>
+
+          ✔ 台灣時間<br>
+
           ${awayPitcher ? "✔" : "✖"}
-          客隊先發
-          <br>
+          客隊先發<br>
+
           ${homePitcher ? "✔" : "✖"}
-          主隊先發
-          <br><br>
+          主隊先發<br><br>
+
+          <strong>
+          PlaySport 日期：
+          ${dateToPlaySport(selectedDate)}
+          </strong>
+
+          <br>
 
           下一階段會把 PlaySport
           的戰績、近10場、H2H、
@@ -1982,16 +2289,21 @@ async function createGameCard(
 
           ?
 
+
           `
-          比賽目前進行中。<br>
-          即時比分與局數會每 15 秒自動更新。
+          比賽目前進行中。<br><br>
+
+          🔴 即時比分與局數
+          每 15 秒自動更新。
           `
 
 
           :
 
+
           `
-          比賽已結束。<br>
+          比賽已結束。<br><br>
+
           這場比賽後續可以進入
           「預測 vs 實際結果」分析。
           `
@@ -2002,55 +2314,10 @@ async function createGameCard(
 
     </div>
 
-
   `;
 
 
   return card;
-
-}
-
-
-/* =========================================================
-   取得球數
-========================================================= */
-
-function getCount(
-  liveData
-) {
-
-  const linescore =
-    liveData?.linescore;
-
-
-  if (
-    !linescore
-  ) {
-
-    return "-";
-
-  }
-
-
-  const balls =
-    linescore.balls;
-
-
-  const strikes =
-    linescore.strikes;
-
-
-  if (
-    balls === undefined ||
-    strikes === undefined
-  ) {
-
-    return "-";
-
-  }
-
-
-  return `${balls}-${strikes}`;
 
 }
 
@@ -2061,46 +2328,56 @@ function getCount(
 
 async function refreshLiveScores() {
 
+  /*
+   * 如果沒有頁面，
+   * 不執行
+   */
+
+  if (
+    !document.querySelector(
+      ".game-card"
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  /*
+   * 記錄目前日期版本
+   */
+
+  const currentVersion =
+    pageVersion;
+
+
   try {
 
     /*
-     * 再抓一次今天的 schedule
+     * 重新取得「目前 PlaySport 日期」
+     * 對應的 MLB 日期
      */
 
-    const url =
-      `${MLB_API}/schedule` +
-      `?sportId=1` +
-      `&date=${selectedDate}` +
-      `&hydrate=team,probablePitcher`;
+    const games =
+      await getMLBSchedule();
 
 
-    const data =
-      await getJSON(url);
+    /*
+     * 防止使用者已切日期
+     */
 
+    if (
+      currentVersion !== pageVersion
+    ) {
 
-    let games = [];
-
-
-    if (data.dates) {
-
-      data.dates.forEach(day => {
-
-        if (day.games) {
-
-          games =
-            games.concat(
-              day.games
-            );
-
-        }
-
-      });
+      return;
 
     }
 
 
     /*
-     * 更新上方統計
+     * 更新統計
      */
 
     updateSummary(
@@ -2109,23 +2386,32 @@ async function refreshLiveScores() {
 
 
     /*
-     * 更新每場比賽
+     * 更新每場
      */
 
     for (
       const game of games
     ) {
 
+      /*
+       * 如果使用者中途切換日期，
+       * 立即停止
+       */
+
+      if (
+        currentVersion !== pageVersion
+      ) {
+
+        return;
+
+      }
+
+
       const card =
         document.querySelector(
           `[data-game-id="${game.gamePk}"]`
         );
 
-
-      /*
-       * 如果頁面沒有這場，
-       * 跳過。
-       */
 
       if (!card) {
 
@@ -2134,35 +2420,53 @@ async function refreshLiveScores() {
       }
 
 
-      let feed = null;
+      /*
+       * 只有 LIVE / FINAL
+       * 才需要抓 feed
+       *
+       * 尚未開打不用一直抓
+       */
+
+      const state =
+        game.status?.abstractGameState;
 
 
-      try {
-
-        feed =
-          await getJSON(
-            `${MLB_API}/game/${game.gamePk}/feed/live`
-          );
-
-      }
-
-      catch(error) {
-
-        console.warn(
-          "Live Feed 更新失敗",
-          game.gamePk
-        );
+      if (
+        state !== "Live" &&
+        state !== "Final"
+      ) {
 
         continue;
 
       }
 
 
-      updateGameCardLive(
-        card,
-        game,
-        feed
-      );
+      try {
+
+        const feed =
+          await getJSON(
+            `${MLB_API}/game/${game.gamePk}/feed/live`
+          );
+
+
+        updateGameCardLive(
+          card,
+          game,
+          feed
+        );
+
+      }
+
+
+      catch(error) {
+
+        console.warn(
+          "Live Feed 更新失敗",
+          game.gamePk,
+          error
+        );
+
+      }
 
     }
 
@@ -2254,44 +2558,18 @@ function updateGameCardLive(
 
   if (statusElement) {
 
-    if (
-      status === "Live"
-    ) {
-
-      statusElement.textContent =
-        "🔴 進行中";
+    const info =
+      getStatusInfo(
+        game
+      );
 
 
-      statusElement.className =
-        "game-status status-live";
-
-    }
+    statusElement.textContent =
+      info.text;
 
 
-    else if (
-      status === "Final"
-    ) {
-
-      statusElement.textContent =
-        "✅ 比賽結束";
-
-
-      statusElement.className =
-        "game-status status-final";
-
-    }
-
-
-    else {
-
-      statusElement.textContent =
-        "尚未開打";
-
-
-      statusElement.className =
-        "game-status status-preview";
-
-    }
+    statusElement.className =
+      `game-status ${info.className}`;
 
   }
 
@@ -2306,31 +2584,11 @@ function updateGameCardLive(
     feed?.liveData?.linescore;
 
 
-  let inningText = "";
-
-
-  if (
-    linescore?.currentInning
-  ) {
-
-    inningText =
-      `${
-        linescore.inningHalf === "Top"
-          ? "上"
-          : "下"
-      }${linescore.currentInning}局`;
-
-  }
-
-
-  if (
-    status === "Final"
-  ) {
-
-    inningText =
-      "比賽結束";
-
-  }
+  const inningText =
+    getInningText(
+      linescore,
+      status
+    );
 
 
   const inningElement =
@@ -2408,6 +2666,70 @@ function updateGameCardLive(
 
   }
 
+
+  /*
+   * =========================
+   * LIVE → FINAL
+   * =========================
+   *
+   * 如果原本是 LIVE，
+   * 結束後要顯示比賽結束。
+   *
+   * 不重新整張卡片，
+   * 只更新必要內容。
+   */
+
+  if (
+    status === "Final"
+  ) {
+
+    const liveState =
+      card.querySelector(
+        ".live-state"
+      );
+
+
+    if (liveState) {
+
+      liveState.textContent =
+        "FINAL";
+
+    }
+
+  }
+
+}
+
+
+/* =========================================================
+   啟動即時更新
+========================================================= */
+
+function startLiveRefresh() {
+
+  /*
+   * 先清除舊 Timer
+   */
+
+  if (liveUpdateTimer) {
+
+    clearInterval(
+      liveUpdateTimer
+    );
+
+  }
+
+
+  /*
+   * 每 15 秒更新
+   */
+
+  liveUpdateTimer =
+    setInterval(
+      refreshLiveScores,
+      15000
+    );
+
 }
 
 
@@ -2458,6 +2780,11 @@ function updateRefreshTime() {
    日期按鈕
 ========================================================= */
 
+
+/*
+ * 前一天
+ */
+
 document
   .getElementById(
     "prevDay"
@@ -2479,6 +2806,10 @@ document
   );
 
 
+/*
+ * 後一天
+ */
+
 document
   .getElementById(
     "nextDay"
@@ -2499,6 +2830,10 @@ document
     }
   );
 
+
+/*
+ * 回到 09/13
+ */
 
 document
   .getElementById(
@@ -2525,29 +2860,6 @@ document
 updateDateUI();
 
 loadMLBGames();
-
-
-/*
- * 啟動即時更新
- *
- * 15 秒一次
- */
-
-if (liveUpdateTimer) {
-
-  clearInterval(
-    liveUpdateTimer
-  );
-
-}
-
-
-liveUpdateTimer =
-  setInterval(
-    refreshLiveScores,
-    15000
-  );
-
 
 </script>
 
