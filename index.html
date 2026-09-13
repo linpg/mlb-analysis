@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MLB 大數據分析中心 - 運彩與過盤預測</title>
+<title>MLB 大數據分析中心 - 時區校正版</title>
 <style>
 * { box-sizing: border-box; }
 body { margin: 0; background: #f4f5f7; color: #222; font-family: Arial, "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
@@ -30,7 +30,7 @@ h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; 
 /* GAME CARD */
 .game-card { background: white; margin-bottom: 20px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .game-top { padding: 12px 18px; border-bottom: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-.game-time { font-weight: bold; font-size: 18px; color: #0b1e36; }
+.game-time { font-weight: bold; font-size: 17px; color: #b91c1c; }
 .game-date-small { color: #64748b; font-size: 11px; margin-top: 3px; }
 .game-status { font-size: 12px; padding: 5px 10px; border-radius: 20px; background: #e2e8f0; font-weight: bold; }
 .status-preview { background: #edf5ff; color: #1e40af; }
@@ -48,7 +48,7 @@ h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; 
 .score { text-align: center; font-size: 32px; font-weight: 800; color: #0b1e36; letter-spacing: 2px; }
 .inning-status { text-align: center; color: #b91c1c; font-size: 12px; margin-top: 6px; min-height: 16px; font-weight: bold; }
 
-/* ODD SECTION (運彩 & PlaySport 數據) */
+/* ODD SECTION */
 .odds-section { background: #fafafa; border-top: 1px solid #edf2f7; padding: 15px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .odd-box { background: white; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; text-align: center; }
 .odd-title { font-size: 12px; color: #e11d48; font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 4px; }
@@ -68,7 +68,7 @@ h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; 
 .pitcher-stat-label { font-size: 10px; color: #94a3b8; }
 .pitcher-stat-value { font-size: 12px; font-weight: bold; color: #334155; }
 
-/* ANALYSIS & WIN RATE */
+/* ANALYSIS */
 .analysis-wrapper { display: grid; grid-template-columns: 160px 1fr; gap: 15px; background: #f0f7ff; border-left: 5px solid #2563eb; padding: 15px; margin: 0 18px 18px; border-radius: 0 8px 8px 0; }
 .win-rate-box { background: white; border: 1px solid #bfdbfe; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
 .win-rate-title { font-size: 11px; color: #1e40af; font-weight: bold; }
@@ -96,7 +96,6 @@ h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; 
   .odds-section { grid-template-columns: 1fr; }
   .pitcher { grid-template-columns: 1fr; }
   .analysis-wrapper { grid-template-columns: 1fr; text-align: center; }
-  .win-rate-box { padding: 15px; }
 }
 </style>
 </head>
@@ -105,23 +104,21 @@ h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; 
 <header>
   <div class="header-inner">
     <h1>⚾ MLB 大數據分析中心</h1>
-    <div class="subtitle">數據源：MLB 官方 StatsAPI ｜ 盤口模擬：台灣運彩試算 ｜ 策略分析：PlaySport 全盤整合智慧推估</div>
+    <div class="subtitle">數據校正：對齊 PlaySport 賽事日期 ｜ 顯示時間：全場精準轉換為台灣本地時間</div>
   </div>
 </header>
 
 <div class="container">
-  <!-- 日期控制列 -->
   <div class="date-bar">
     <div class="date-buttons">
       <button id="btn-prev">前一天</button>
-      <button id="btn-today" class="active">今天</button>
+      <button id="btn-today" class="active">今天 (PlaySport 9/13)</button>
       <button id="btn-next">後一天</button>
     </div>
-    <span class="date-current" id="current-date-display">正在同步美東時間...</span>
+    <span class="date-current" id="current-date-display">正在校正美東 API 時區...</span>
     <input type="date" id="date-picker">
   </div>
 
-  <!-- 數據統計區 -->
   <div class="summary">
     <div class="summary-box"><div class="summary-title">今日總場次</div><div class="summary-value" id="sum-total">0</div></div>
     <div class="summary-box"><div class="summary-title">現場 LIVE</div><div class="summary-value" id="sum-live" style="color: #ef4444;">0</div></div>
@@ -129,21 +126,22 @@ h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; 
     <div class="summary-box"><div class="summary-title">未開賽</div><div class="summary-value" id="sum-preview" style="color: #3b82f6;">0</div></div>
   </div>
 
-  <!-- 賽事動態卡片容器 -->
   <div id="games-container">
-    <div class="loading">正在向 MLB 官方大數據庫獲取最新賽事資料與盤口數據...</div>
+    <div class="loading">正在請求大聯盟官方大數據並進行時區重組...</div>
   </div>
 
-  <div class="refresh-info" id="refresh-time">大數據最後對齊時間：--:--:--</div>
+  <div class="refresh-info" id="refresh-time">時區校正最後同步時間：--:--:--</div>
 </div>
 
 <script>
-let currentDate = new Date();
+// 核心設定：使用者看 PlaySport 9/13 的比賽，底層必須去撈美東 9/12 ~ 9/13 的跨時區原始資料
+let currentTaiwanDate = new Date("2026-09-13"); 
+
 const container = document.getElementById('games-container');
 const datePicker = document.getElementById('date-picker');
 const dateDisplay = document.getElementById('current-date-display');
 
-function formatDate(date) {
+function formatToYYYYMMDD(date) {
   const d = new Date(date);
   let month = '' + (d.getMonth() + 1);
   let day = '' + d.getDate();
@@ -157,17 +155,16 @@ function getTeamLogo(teamId) {
   return `https://mlb.com{teamId}.svg`;
 }
 
+// 智慧運彩與 PlaySport 分析演算法
 function calculateSmartOddsAndAnalysis(awayName, homeName, awayWins, awayLosses, homeWins, homeLosses) {
   const awayWinRate = awayWins + awayLosses > 0 ? awayWins / (awayWins + awayLosses) : 0.5;
-  const homeWinRate = homeWins + homeLosses > 0 ? homeWins / (homeWins + homeLosses) : 0.53; 
-  
+  const homeWinRate = homeWins + homeLosses > 0 ? homeWins / (homeWins + homeLosses) : 0.53;
   const powerDiff = (homeWinRate + 0.08) - awayWinRate;
   
-  let homeML = 1.75 - (powerDiff * 1.5);
-  let awayML = 1.95 + (powerDiff * 1.5);
-  
-  homeML = Math.max(1.30, Math.min(2.45, homeML)).toFixed(2);
-  awayML = Math.max(1.30, Math.min(2.45, awayML)).toFixed(2);
+  let homeML = (1.75 - (powerDiff * 1.5)).toFixed(2);
+  let awayML = (1.95 + (powerDiff * 1.5)).toFixed(2);
+  homeML = Math.max(1.30, Math.min(2.45, parseFloat(homeML))).toFixed(2);
+  awayML = Math.max(1.30, Math.min(2.45, parseFloat(awayML))).toFixed(2);
   
   let spreadValue = "-1.5";
   let homeSpreadOdd = "1.95";
@@ -179,15 +176,10 @@ function calculateSmartOddsAndAnalysis(awayName, homeName, awayWins, awayLosses,
   }
   
   const totalBase = (7.5 + Math.random() * 2).toFixed(1);
-  const bigOdd = "1.75";
-  const smallOdd = "1.75";
   
   let recommendedTeam = homeName;
   let rawConfidence = 50 + (Math.abs(powerDiff) * 100);
-  if (powerDiff < 0) {
-    recommendedTeam = awayName;
-  }
+  if (powerDiff < 0) recommendedTeam = awayName;
   rawConfidence += (Math.random() * 6 - 3);
   const playSportConfidence = Math.max(52, Math.min(78, rawConfidence)).toFixed(1);
 
-  let textAnalysis = "";
