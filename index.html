@@ -36,14 +36,75 @@
     }
 
     .container {
-      max-width: 1400px;
+      max-width: 1450px;
       margin: 0 auto;
       padding: 20px;
     }
 
-    .top-info {
+    /* =========================
+       日期控制
+    ========================= */
+
+    .date-panel {
+      background: white;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 18px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.07);
+    }
+
+    .date-title {
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+
+    .date-controls {
       display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
       flex-wrap: wrap;
+    }
+
+    .date-btn {
+      border: none;
+      background: #e5e7eb;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .date-btn:hover {
+      background: #d1d5db;
+    }
+
+    .today-btn {
+      background: #111827;
+      color: white;
+    }
+
+    .date-input {
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    .selected-date {
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 14px;
+    }
+
+    /* =========================
+       上方資訊
+    ========================= */
+
+    .top-info {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
@@ -51,7 +112,7 @@
     .info-box {
       background: white;
       border-radius: 10px;
-      padding: 12px 16px;
+      padding: 13px 16px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
 
@@ -66,9 +127,32 @@
       font-weight: bold;
     }
 
+    /* =========================
+       狀態統計
+    ========================= */
+
+    .status-summary {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .status-chip {
+      background: white;
+      padding: 9px 13px;
+      border-radius: 20px;
+      font-size: 13px;
+      box-shadow: 0 2px 7px rgba(0,0,0,0.05);
+    }
+
+    /* =========================
+       比賽
+    ========================= */
+
     .games {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
       gap: 18px;
     }
 
@@ -96,6 +180,21 @@
       padding: 5px 9px;
       border-radius: 20px;
       background: #e5e7eb;
+    }
+
+    .status-preview {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-live {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-final {
+      background: #e5e7eb;
+      color: #374151;
     }
 
     .teams {
@@ -134,6 +233,10 @@
       font-weight: bold;
     }
 
+    /* =========================
+       區塊
+    ========================= */
+
     .section {
       border-top: 1px solid #e5e7eb;
       padding-top: 13px;
@@ -145,6 +248,10 @@
       margin-bottom: 9px;
       font-size: 14px;
     }
+
+    /* =========================
+       投手
+    ========================= */
 
     .pitchers {
       display: grid;
@@ -169,6 +276,10 @@
       font-size: 14px;
     }
 
+    /* =========================
+       棒次
+    ========================= */
+
     .lineups {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -189,7 +300,7 @@
 
     .batter {
       display: flex;
-      justify-content: space-between;
+      align-items: center;
       padding: 4px 0;
       border-bottom: 1px solid #e5e7eb;
       font-size: 12px;
@@ -200,7 +311,7 @@
     }
 
     .batter-order {
-      width: 24px;
+      width: 25px;
       color: #6b7280;
     }
 
@@ -213,6 +324,10 @@
       color: #6b7280;
       font-size: 11px;
     }
+
+    /* =========================
+       完整度
+    ========================= */
 
     .completeness {
       margin-top: 10px;
@@ -238,6 +353,10 @@
       margin-top: 5px;
       font-size: 12px;
     }
+
+    /* =========================
+       預測狀態
+    ========================= */
 
     .prediction-status {
       margin-top: 10px;
@@ -267,6 +386,10 @@
       color: #1e40af;
     }
 
+    /* =========================
+       賽季
+    ========================= */
+
     .season-box {
       background: #f8fafc;
       padding: 10px;
@@ -290,6 +413,8 @@
       text-align: center;
       padding: 40px;
       color: #6b7280;
+      background: white;
+      border-radius: 12px;
     }
 
     .error {
@@ -300,7 +425,19 @@
       margin-bottom: 20px;
     }
 
+    .score-box {
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    /* =========================
+       手機
+    ========================= */
+
     @media (max-width: 600px) {
+
       .games {
         grid-template-columns: 1fr;
       }
@@ -313,66 +450,436 @@
         width: 48px;
         height: 48px;
       }
+
+      .lineups {
+        grid-template-columns: 1fr;
+      }
+
     }
+
   </style>
 </head>
 
 <body>
 
 <header>
+
   <h1>⚾ MLB 比賽分析系統</h1>
-  <p>2026 Season · 資料完整度 → 預測 → 歷史驗證</p>
+
+  <p>
+    2026 Season · 今日 / 歷史 / 未來賽事分析
+  </p>
+
 </header>
 
+
 <div class="container">
+
+
+  <!-- =========================
+       日期
+  ========================== -->
+
+  <div class="date-panel">
+
+    <div class="date-title">
+      📅 選擇分析日期
+    </div>
+
+    <div class="date-controls">
+
+      <button
+        class="date-btn"
+        onclick="changeDate(-1)"
+      >
+        ← 前一天
+      </button>
+
+      <button
+        class="date-btn today-btn"
+        onclick="goToday()"
+      >
+        今天
+      </button>
+
+      <button
+        class="date-btn"
+        onclick="changeDate(1)"
+      >
+        下一天 →
+      </button>
+
+      <input
+        type="date"
+        id="dateInput"
+        class="date-input"
+        onchange="selectDate(this.value)"
+      >
+
+    </div>
+
+    <div
+      class="selected-date"
+      id="selectedDate"
+    ></div>
+
+  </div>
+
+
+  <!-- =========================
+       基本資訊
+  ========================== -->
 
   <div class="top-info">
 
     <div class="info-box">
-      <div class="info-title">分析日期</div>
-      <div class="info-value" id="today"></div>
+
+      <div class="info-title">
+        賽季
+      </div>
+
+      <div class="info-value">
+        2026 MLB
+      </div>
+
     </div>
 
-    <div class="info-box">
-      <div class="info-title">賽季</div>
-      <div class="info-value">2026 MLB</div>
-    </div>
 
     <div class="info-box">
-      <div class="info-title">目前階段</div>
-      <div class="info-value" id="seasonStage"></div>
+
+      <div class="info-title">
+        賽季階段
+      </div>
+
+      <div
+        class="info-value"
+        id="seasonStage"
+      >
+        -
+      </div>
+
     </div>
 
+
     <div class="info-box">
-      <div class="info-title">比賽數</div>
-      <div class="info-value" id="gameCount">讀取中</div>
+
+      <div class="info-title">
+        比賽數
+      </div>
+
+      <div
+        class="info-value"
+        id="gameCount"
+      >
+        -
+      </div>
+
     </div>
 
   </div>
+
+
+  <!-- =========================
+       比賽狀態
+  ========================== -->
+
+  <div
+    class="status-summary"
+    id="statusSummary"
+  >
+  </div>
+
 
   <div id="error"></div>
 
-  <div id="games" class="games">
+
+  <!-- =========================
+       比賽
+  ========================== -->
+
+  <div
+    id="games"
+    class="games"
+  >
+
     <div class="loading">
       正在讀取 MLB 官方資料...
     </div>
+
   </div>
+
 
 </div>
 
+
 <script>
 
-const MLB_API = "https://statsapi.mlb.com/api/v1";
+const MLB_API =
+  "https://statsapi.mlb.com/api/v1";
 
-const today = new Date();
 
-const yyyy = today.getFullYear();
-const mm = String(today.getMonth() + 1).padStart(2, "0");
-const dd = String(today.getDate()).padStart(2, "0");
+/* =========================================================
+   日期
+========================================================= */
 
-const dateString = `${yyyy}-${mm}-${dd}`;
+let selectedDate =
+  new Date();
 
-document.getElementById("today").textContent = dateString;
+
+function dateToString(date) {
+
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(date.getMonth() + 1)
+      .padStart(2, "0");
+
+  const day =
+    String(date.getDate())
+      .padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+
+}
+
+
+function stringToDate(dateString) {
+
+  const parts =
+    dateString.split("-");
+
+  return new Date(
+    Number(parts[0]),
+    Number(parts[1]) - 1,
+    Number(parts[2])
+  );
+
+}
+
+
+/* =========================================================
+   初始化日期
+========================================================= */
+
+function initializeDate() {
+
+  const dateString =
+    dateToString(selectedDate);
+
+  document.getElementById(
+    "dateInput"
+  ).value = dateString;
+
+  updateDateDisplay();
+
+}
+
+
+/* =========================================================
+   日期顯示
+========================================================= */
+
+function updateDateDisplay() {
+
+  const dateString =
+    dateToString(selectedDate);
+
+  document.getElementById(
+    "selectedDate"
+  ).textContent =
+    dateString;
+
+  document.getElementById(
+    "dateInput"
+  ).value =
+    dateString;
+
+}
+
+
+/* =========================================================
+   前一天 / 下一天
+========================================================= */
+
+function changeDate(days) {
+
+  selectedDate.setDate(
+    selectedDate.getDate() + days
+  );
+
+  updateDateDisplay();
+
+  loadGames();
+
+}
+
+
+/* =========================================================
+   今天
+========================================================= */
+
+function goToday() {
+
+  selectedDate =
+    new Date();
+
+  updateDateDisplay();
+
+  loadGames();
+
+}
+
+
+/* =========================================================
+   日期選擇器
+========================================================= */
+
+function selectDate(value) {
+
+  if (!value) {
+    return;
+  }
+
+  selectedDate =
+    stringToDate(value);
+
+  updateDateDisplay();
+
+  loadGames();
+
+}
+
+
+/* =========================================================
+   API
+========================================================= */
+
+async function getJSON(url) {
+
+  const response =
+    await fetch(url);
+
+  if (!response.ok) {
+
+    throw new Error(
+      "API 讀取失敗：" +
+      response.status
+    );
+
+  }
+
+  return await response.json();
+
+}
+
+
+/* =========================================================
+   球隊 Logo
+========================================================= */
+
+function getTeamLogo(teamId) {
+
+  return `
+    https://www.mlbstatic.com/team-logos/${teamId}.svg
+  `;
+
+}
+
+
+/* =========================================================
+   比賽狀態
+========================================================= */
+
+function getGameType(game) {
+
+  const state =
+    game.status?.abstractGameState;
+
+  if (state === "Preview") {
+    return "preview";
+  }
+
+  if (state === "Live") {
+    return "live";
+  }
+
+  if (state === "Final") {
+    return "final";
+  }
+
+  return "other";
+
+}
+
+
+function getStatusText(game) {
+
+  const state =
+    game.status?.abstractGameState;
+
+  if (state === "Preview") {
+    return "🟢 尚未開打";
+  }
+
+  if (state === "Live") {
+    return "🟡 比賽進行中";
+  }
+
+  if (state === "Final") {
+    return "⚫ 比賽結束";
+  }
+
+  return game.status?.detailedState || "未知";
+
+}
+
+
+/* =========================================================
+   狀態 CSS
+========================================================= */
+
+function getStatusClass(game) {
+
+  const type =
+    getGameType(game);
+
+  if (type === "preview") {
+    return "status-preview";
+  }
+
+  if (type === "live") {
+    return "status-live";
+  }
+
+  if (type === "final") {
+    return "status-final";
+  }
+
+  return "";
+
+}
+
+
+/* =========================================================
+   比賽時間
+========================================================= */
+
+function formatGameTime(gameDate) {
+
+  const date =
+    new Date(gameDate);
+
+  return date.toLocaleTimeString(
+    "zh-TW",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+
+}
 
 
 /* =========================================================
@@ -381,7 +888,8 @@ document.getElementById("today").textContent = dateString;
 
 function getSeasonStage() {
 
-  const month = today.getMonth() + 1;
+  const month =
+    selectedDate.getMonth() + 1;
 
   if (month <= 4) {
     return "賽季初期";
@@ -400,102 +908,26 @@ function getSeasonStage() {
   }
 
   return "季後賽階段";
-}
-
-document.getElementById("seasonStage").textContent =
-  getSeasonStage();
-
-
-/* =========================================================
-   API
-========================================================= */
-
-async function getJSON(url) {
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error("API 讀取失敗：" + response.status);
-  }
-
-  return await response.json();
-}
-
-
-/* =========================================================
-   球隊 Logo
-========================================================= */
-
-function getTeamLogo(teamId) {
-
-  return `https://www.mlbstatic.com/team-logos/${teamId}.svg`;
 
 }
 
 
 /* =========================================================
-   比賽狀態
+   先發投手
 ========================================================= */
 
-function getStatusText(status) {
-
-  if (!status) return "未知";
-
-  switch (status.abstractGameState) {
-
-    case "Preview":
-      return "尚未開打";
-
-    case "Live":
-      return "比賽進行中";
-
-    case "Final":
-      return "比賽結束";
-
-    case "Postponed":
-      return "延賽";
-
-    case "Cancelled":
-      return "取消";
-
-    default:
-      return status.detailedState || "未知";
-
-  }
-}
-
-
-/* =========================================================
-   時間
-========================================================= */
-
-function formatGameTime(gameDate) {
-
-  const date = new Date(gameDate);
-
-  return date.toLocaleTimeString("zh-TW", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
-
-}
-
-
-/* =========================================================
-   取得預計先發投手
-========================================================= */
-
-function getProbablePitcher(gameData, side) {
+function getProbablePitcher(
+  gameData,
+  side
+) {
 
   if (
-    gameData &&
-    gameData.gameData &&
-    gameData.gameData.probablePitchers &&
-    gameData.gameData.probablePitchers[side]
+    gameData?.gameData?.probablePitchers?.[side]
   ) {
 
-    return gameData.gameData.probablePitchers[side];
+    return gameData
+      .gameData
+      .probablePitchers[side];
 
   }
 
@@ -505,18 +937,22 @@ function getProbablePitcher(gameData, side) {
 
 
 /* =========================================================
-   取得棒次
+   棒次
 ========================================================= */
 
-function getBattingOrder(gameData, side) {
+function getBattingOrder(
+  gameData,
+  side
+) {
 
   try {
 
     const boxscore =
-      gameData.liveData &&
-      gameData.liveData.boxscore &&
-      gameData.liveData.boxscore.teams &&
-      gameData.liveData.boxscore.teams[side];
+      gameData
+        ?.liveData
+        ?.boxscore
+        ?.teams
+        ?.[side];
 
     if (!boxscore) {
       return [];
@@ -526,35 +962,41 @@ function getBattingOrder(gameData, side) {
       return [];
     }
 
-    const players = boxscore.players || {};
+    const players =
+      boxscore.players || {};
 
-    return boxscore.battingOrder.map(playerId => {
+    return boxscore
+      .battingOrder
+      .map(playerId => {
 
-      const player =
-        players["ID" + playerId];
+        const player =
+          players["ID" + playerId];
 
-      if (!player) {
-        return null;
-      }
+        if (!player) {
+          return null;
+        }
 
-      return {
+        return {
 
-        name:
-          player.person?.fullName || "未知球員",
+          name:
+            player.person?.fullName ||
+            "未知球員",
 
-        position:
-          player.position?.abbreviation || "",
+          position:
+            player.position?.abbreviation ||
+            ""
 
-        battingOrder:
-          player.battingOrder || ""
+        };
 
-      };
-
-    }).filter(Boolean);
+      })
+      .filter(Boolean);
 
   } catch (error) {
 
-    console.log("取得棒次失敗", error);
+    console.log(
+      "棒次讀取失敗",
+      error
+    );
 
     return [];
 
@@ -564,23 +1006,34 @@ function getBattingOrder(gameData, side) {
 
 
 /* =========================================================
-   計算資料完整度
+   資料完整度
 ========================================================= */
 
-function calculateCompleteness(gameData, awayLineup, homeLineup) {
+function calculateCompleteness(
+  gameData,
+  awayLineup,
+  homeLineup
+) {
 
   let score = 0;
 
+
   /*
     先發投手
-    20 分
+    20%
   */
 
   const awayPitcher =
-    getProbablePitcher(gameData, "away");
+    getProbablePitcher(
+      gameData,
+      "away"
+    );
 
   const homePitcher =
-    getProbablePitcher(gameData, "home");
+    getProbablePitcher(
+      gameData,
+      "home"
+    );
 
   if (awayPitcher) {
     score += 10;
@@ -593,34 +1046,68 @@ function calculateCompleteness(gameData, awayLineup, homeLineup) {
 
   /*
     棒次
-    每隊最多 25 分
+    50%
   */
 
-  score += Math.min(awayLineup.length, 9) / 9 * 25;
+  score +=
+    Math.min(
+      awayLineup.length,
+      9
+    ) / 9 * 25;
 
-  score += Math.min(homeLineup.length, 9) / 9 * 25;
+  score +=
+    Math.min(
+      homeLineup.length,
+      9
+    ) / 9 * 25;
 
 
   /*
-    基礎比賽資料
-    10 分
+    球場
+    5%
   */
 
-  if (gameData.gameData?.venue) {
+  if (
+    gameData
+      ?.gameData
+      ?.venue
+  ) {
+
     score += 5;
+
   }
 
-  if (gameData.gameData?.datetime) {
+
+  /*
+    時間資料
+    5%
+  */
+
+  if (
+    gameData
+      ?.gameData
+      ?.datetime
+  ) {
+
     score += 5;
+
   }
 
-  return Math.round(score);
+
+  /*
+    目前版本最高 100%
+  */
+
+  return Math.min(
+    100,
+    Math.round(score)
+  );
 
 }
 
 
 /* =========================================================
-   完整度文字
+   完整度判斷
 ========================================================= */
 
 function getCompletenessInfo(score) {
@@ -628,54 +1115,73 @@ function getCompletenessInfo(score) {
   if (score < 70) {
 
     return {
-      text: "🔴 資料不足，目前不進行正式預測",
-      className: "not-ready"
+      text:
+        "🔴 資料不足，目前不進行正式預測",
+      className:
+        "not-ready"
     };
 
   }
+
 
   if (score < 80) {
 
     return {
-      text: "🟡 初步分析，等待更多資料",
-      className: "early"
+      text:
+        "🟡 初步分析，等待更多資料",
+      className:
+        "early"
     };
 
   }
+
 
   if (score < 90) {
 
     return {
-      text: "🟢 已達正式預測門檻",
-      className: "ready"
+      text:
+        "🟢 已達正式預測門檻",
+      className:
+        "ready"
     };
 
   }
+
 
   if (score < 100) {
 
     return {
-      text: "🟢 高完整度，可以進行預測",
-      className: "ready"
+      text:
+        "🟢 高完整度，可以進行預測",
+      className:
+        "ready"
     };
 
   }
 
+
   return {
-    text: "⭐ 完整資料，可以進行 Final Prediction",
-    className: "excellent"
+    text:
+      "⭐ 完整資料，可以進行 Final Prediction",
+    className:
+      "excellent"
   };
 
 }
 
 
 /* =========================================================
-   顯示棒次
+   棒次顯示
 ========================================================= */
 
-function renderLineup(lineup) {
+function renderLineup(
+  lineup
+) {
 
-  if (!lineup || lineup.length === 0) {
+  if (
+    !lineup ||
+    lineup.length === 0
+  ) {
 
     return `
       <div class="note">
@@ -685,27 +1191,96 @@ function renderLineup(lineup) {
 
   }
 
-  return lineup.slice(0, 9).map((player, index) => {
 
-    return `
-      <div class="batter">
+  return lineup
+    .slice(0, 9)
+    .map(
+      (player, index) => {
 
-        <div class="batter-order">
-          ${index + 1}
-        </div>
+        return `
 
-        <div class="batter-name">
-          ${player.name}
-        </div>
+          <div class="batter">
 
-        <div class="batter-position">
-          ${player.position}
-        </div>
+            <div class="batter-order">
+              ${index + 1}
+            </div>
 
+            <div class="batter-name">
+              ${player.name}
+            </div>
+
+            <div class="batter-position">
+              ${player.position}
+            </div>
+
+          </div>
+
+        `;
+
+      }
+    )
+    .join("");
+
+}
+
+
+/* =========================================================
+   賽後比分
+========================================================= */
+
+function renderScore(
+  game
+) {
+
+  const type =
+    getGameType(game);
+
+  if (
+    type !== "final" &&
+    type !== "live"
+  ) {
+
+    return "";
+
+  }
+
+
+  const awayScore =
+    game.teams?.away?.score;
+
+  const homeScore =
+    game.teams?.home?.score;
+
+
+  if (
+    awayScore === undefined ||
+    homeScore === undefined
+  ) {
+
+    return "";
+
+  }
+
+
+  return `
+
+    <div class="section">
+
+      <div class="section-title">
+        ${type === "live"
+          ? "📺 目前比分"
+          : "🏁 最終比分"}
       </div>
-    `;
 
-  }).join("");
+      <div class="score-box">
+        ${awayScore}
+        -
+        ${homeScore}
+      </div>
+
+    </div>
+
+  `;
 
 }
 
@@ -714,7 +1289,10 @@ function renderLineup(lineup) {
    建立比賽卡片
 ========================================================= */
 
-function renderGame(game, gameData) {
+function renderGame(
+  game,
+  gameData
+) {
 
   const away =
     game.teams.away.team;
@@ -724,17 +1302,29 @@ function renderGame(game, gameData) {
 
 
   const awayLineup =
-    getBattingOrder(gameData, "away");
+    getBattingOrder(
+      gameData,
+      "away"
+    );
 
   const homeLineup =
-    getBattingOrder(gameData, "home");
+    getBattingOrder(
+      gameData,
+      "home"
+    );
 
 
   const awayPitcher =
-    getProbablePitcher(gameData, "away");
+    getProbablePitcher(
+      gameData,
+      "away"
+    );
 
   const homePitcher =
-    getProbablePitcher(gameData, "home");
+    getProbablePitcher(
+      gameData,
+      "home"
+    );
 
 
   const completeness =
@@ -746,18 +1336,55 @@ function renderGame(game, gameData) {
 
 
   const completenessInfo =
-    getCompletenessInfo(completeness);
+    getCompletenessInfo(
+      completeness
+    );
 
 
   const venue =
-    gameData.gameData?.venue?.name ||
+    gameData
+      ?.gameData
+      ?.venue
+      ?.name ||
     game.venue?.name ||
     "未知球場";
+
+
+  const gameType =
+    getGameType(game);
+
+
+  /*
+    已結束的比賽
+    不再顯示「預測中」
+  */
+
+  let predictionMessage =
+    completenessInfo.text;
+
+
+  if (gameType === "final") {
+
+    predictionMessage =
+      "⚫ 比賽已結束，下一階段將比對預測與實際結果";
+
+  }
+
+
+  if (gameType === "live") {
+
+    predictionMessage =
+      "🟡 比賽進行中，賽前預測保持鎖定";
+
+  }
 
 
   return `
 
     <div class="game-card">
+
+
+      <!-- 頂部 -->
 
       <div class="game-header">
 
@@ -765,8 +1392,10 @@ function renderGame(game, gameData) {
           ${formatGameTime(game.gameDate)}
         </div>
 
-        <div class="status">
-          ${getStatusText(game.status)}
+        <div
+          class="status ${getStatusClass(game)}"
+        >
+          ${getStatusText(game)}
         </div>
 
       </div>
@@ -775,6 +1404,7 @@ function renderGame(game, gameData) {
       <!-- 球隊 -->
 
       <div class="teams">
+
 
         <div class="team">
 
@@ -820,10 +1450,14 @@ function renderGame(game, gameData) {
 
         </div>
 
+
       </div>
 
 
-      <!-- 先發投手 -->
+      ${renderScore(game)}
+
+
+      <!-- 投手 -->
 
       <div class="section">
 
@@ -831,7 +1465,9 @@ function renderGame(game, gameData) {
           🧑‍⚾ 預計先發投手
         </div>
 
+
         <div class="pitchers">
+
 
           <div class="pitcher-box">
 
@@ -870,6 +1506,7 @@ function renderGame(game, gameData) {
 
           </div>
 
+
         </div>
 
       </div>
@@ -883,7 +1520,9 @@ function renderGame(game, gameData) {
           📋 先發打線
         </div>
 
+
         <div class="lineups">
+
 
           <div class="lineup-team">
 
@@ -906,6 +1545,7 @@ function renderGame(game, gameData) {
 
           </div>
 
+
         </div>
 
       </div>
@@ -919,6 +1559,7 @@ function renderGame(game, gameData) {
           🗓️ 賽季狀態
         </div>
 
+
         <div class="season-box">
 
           <div class="season-stage">
@@ -930,8 +1571,8 @@ function renderGame(game, gameData) {
           </div>
 
           <div class="note">
-            賽季階段將影響後續模型權重。
-            目前先建立資料層，正式模型稍後接入。
+            後續會加入實際賽季進度、
+            季後賽排名與季後賽壓力。
           </div>
 
         </div>
@@ -947,6 +1588,7 @@ function renderGame(game, gameData) {
           🧠 預測資料完整度
         </div>
 
+
         <div class="completeness">
 
           <div class="progress-bg">
@@ -958,6 +1600,7 @@ function renderGame(game, gameData) {
 
           </div>
 
+
           <div class="progress-text">
 
             <span>
@@ -965,11 +1608,13 @@ function renderGame(game, gameData) {
             </span>
 
             <span>
+
               ${
                 completeness >= 80
                   ? "已達預測門檻"
                   : "等待資料"
               }
+
             </span>
 
           </div>
@@ -977,23 +1622,37 @@ function renderGame(game, gameData) {
         </div>
 
 
-        <div class="prediction-status ${completenessInfo.className}">
-          ${completenessInfo.text}
+        <div
+          class="prediction-status ${completenessInfo.className}"
+        >
+
+          ${predictionMessage}
+
         </div>
+
 
         <div class="note">
 
-          正式模型將在資料完整度達到門檻後才產生正式預測。
-          後續還會加入球隊戰績、近10場、打者近期狀態、
-          牛棚、傷兵、主客場、左右投拆分、天氣、球場、
-          PlaySport 與台灣運彩盤口等因素。
+          正式預測門檻：
+          資料完整度至少 80%。
+
+          後續完整模型還會加入：
+
+          球隊戰績、近10場、
+          主客場、先發投手、
+          打者近期狀態、牛棚、
+          傷兵、H2H、
+          賽季／季後賽情勢、
+          天氣、球場、
+          PlaySport、
+          台灣運彩盤口。
 
         </div>
 
       </div>
 
 
-      <!-- 近期打擊預留 -->
+      <!-- 近期打擊 -->
 
       <div class="section">
 
@@ -1003,13 +1662,19 @@ function renderGame(game, gameData) {
 
         <div class="note">
 
-          此區下一階段接入 MLB 官方球員近期打擊數據。
-          會分析 Last 5 / Last 10、AVG、OBP、SLG、OPS、
-          HR、BB、K，以及對左右投拆分。
+          下一階段接入 MLB 官方球員近期打擊資料。
+
+          預計分析：
+
+          Last 5、Last 10、
+          AVG、OBP、SLG、OPS、
+          HR、BB、K、
+          對 RHP / LHP 拆分。
 
         </div>
 
       </div>
+
 
     </div>
 
@@ -1019,7 +1684,61 @@ function renderGame(game, gameData) {
 
 
 /* =========================================================
-   讀取所有比賽
+   狀態統計
+========================================================= */
+
+function renderStatusSummary(
+  games
+) {
+
+  let preview = 0;
+  let live = 0;
+  let final = 0;
+
+
+  games.forEach(game => {
+
+    const type =
+      getGameType(game);
+
+    if (type === "preview") {
+      preview++;
+    }
+
+    else if (type === "live") {
+      live++;
+    }
+
+    else if (type === "final") {
+      final++;
+    }
+
+  });
+
+
+  document.getElementById(
+    "statusSummary"
+  ).innerHTML = `
+
+    <div class="status-chip">
+      🟢 尚未開打：${preview}
+    </div>
+
+    <div class="status-chip">
+      🟡 進行中：${live}
+    </div>
+
+    <div class="status-chip">
+      ⚫ 已結束：${final}
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================================
+   讀取比賽
 ========================================================= */
 
 async function loadGames() {
@@ -1030,7 +1749,33 @@ async function loadGames() {
   const errorContainer =
     document.getElementById("error");
 
+
+  gamesContainer.innerHTML = `
+
+    <div class="loading">
+      正在讀取 MLB 官方資料...
+    </div>
+
+  `;
+
+  errorContainer.innerHTML = "";
+
+
+  document.getElementById(
+    "seasonStage"
+  ).textContent =
+    getSeasonStage();
+
+
+  const dateString =
+    dateToString(selectedDate);
+
+
   try {
+
+    /*
+      Schedule
+    */
 
     const scheduleURL =
       `${MLB_API}/schedule` +
@@ -1038,24 +1783,39 @@ async function loadGames() {
       `&date=${dateString}` +
       `&hydrate=team,probablePitcher`;
 
+
     const schedule =
       await getJSON(scheduleURL);
 
 
     const games =
-      schedule.dates?.[0]?.games || [];
+      schedule
+        .dates?.[0]
+        ?.games || [];
 
 
-    document.getElementById("gameCount")
-      .textContent = games.length;
+    document.getElementById(
+      "gameCount"
+    ).textContent =
+      games.length;
+
+
+    renderStatusSummary(
+      games
+    );
 
 
     if (games.length === 0) {
 
       gamesContainer.innerHTML = `
+
         <div class="loading">
-          今天沒有找到 MLB 比賽資料。
+
+          📭 ${dateString}
+          沒有找到 MLB 比賽資料。
+
         </div>
+
       `;
 
       return;
@@ -1064,65 +1824,61 @@ async function loadGames() {
 
 
     /*
-      先顯示基本資料
+      逐場讀取 Game Feed
     */
 
-    gamesContainer.innerHTML =
-      games.map(game => {
-
-        return `
-          <div class="game-card">
-            <div class="loading">
-              正在讀取 ${game.teams.away.team.name}
-              @
-              ${game.teams.home.team.name}
-              ...
-            </div>
-          </div>
-        `;
-
-      }).join("");
+    const cards = [];
 
 
     /*
-      再逐場取得 game feed
+      一次最多同時讀取幾場
+      避免瀏覽器一次打太多 API
     */
 
-    const gameCards = [];
-
-
-    for (const game of games) {
+    for (
+      const game of games
+    ) {
 
       try {
 
         const feedURL =
           `${MLB_API}/game/${game.gamePk}/feed/live`;
 
+
         const gameData =
           await getJSON(feedURL);
 
-        gameCards.push(
-          renderGame(game, gameData)
+
+        cards.push(
+          renderGame(
+            game,
+            gameData
+          )
         );
+
 
       } catch (error) {
 
         console.log(
-          "Game feed 讀取失敗：",
+          "Game Feed 失敗：",
           game.gamePk,
           error
         );
 
+
         /*
-          如果單場 feed 失敗，
-          至少仍顯示賽程
+          Feed 失敗時
+          至少保留比賽資料
         */
 
-        gameCards.push(
-          renderGame(game, {
-            gameData: {},
-            liveData: {}
-          })
+        cards.push(
+          renderGame(
+            game,
+            {
+              gameData: {},
+              liveData: {}
+            }
+          )
         );
 
       }
@@ -1131,28 +1887,33 @@ async function loadGames() {
 
 
     gamesContainer.innerHTML =
-      gameCards.join("");
+      cards.join("");
 
 
   } catch (error) {
 
     console.error(error);
 
+
     errorContainer.innerHTML = `
+
       <div class="error">
 
-        ⚠️ MLB 資料讀取失敗。
+        ⚠️ MLB 官方資料讀取失敗。
 
         <br><br>
 
-        請稍後重新整理頁面。
+        請稍後重新整理。
 
-        <br>
+        <br><br>
 
-        如果持續發生，我們再處理 API / CORS 問題。
+        錯誤：
+        ${error.message}
 
       </div>
+
     `;
+
 
     gamesContainer.innerHTML = "";
 
@@ -1162,8 +1923,10 @@ async function loadGames() {
 
 
 /* =========================================================
-   開始
+   啟動
 ========================================================= */
+
+initializeDate();
 
 loadGames();
 
