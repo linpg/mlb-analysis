@@ -1,875 +1,735 @@
 ```html
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <title>MLB 今日賽事分析</title>
-
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family:
-        Arial,
-        "Noto Sans TC",
-        "Microsoft JhengHei",
-        sans-serif;
-      background: #f4f6f8;
-      color: #1f2937;
-    }
-
-    header {
-      background: #111827;
-      color: white;
-      padding: 24px 16px;
-    }
-
-    .header-inner {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    h1 {
-      margin: 0 0 8px;
-      font-size: 28px;
-    }
-
-    .subtitle {
-      color: #d1d5db;
-      font-size: 14px;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px 16px 50px;
-    }
-
-    .date-panel {
-      background: white;
-      border-radius: 14px;
-      padding: 16px;
-      margin-bottom: 18px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
-
-    .date-title {
-      font-size: 14px;
-      color: #6b7280;
-      margin-bottom: 10px;
-    }
-
-    .date-controls {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    button {
-      border: 0;
-      border-radius: 8px;
-      padding: 10px 14px;
-      cursor: pointer;
-      background: #e5e7eb;
-      color: #111827;
-      font-size: 14px;
-    }
-
-    button:hover {
-      background: #d1d5db;
-    }
-
-    .today-btn {
-      background: #2563eb;
-      color: white;
-      font-weight: 700;
-    }
-
-    .today-btn:hover {
-      background: #1d4ed8;
-    }
-
-    input[type="date"] {
-      padding: 9px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      font-size: 14px;
-    }
-
-    .taiwan-date {
-      margin-top: 12px;
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .summary-card {
-      background: white;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-
-    .summary-label {
-      color: #6b7280;
-      font-size: 13px;
-      margin-bottom: 6px;
-    }
-
-    .summary-value {
-      font-size: 24px;
-      font-weight: 700;
-    }
-
-    .loading,
-    .error,
-    .empty {
-      background: white;
-      border-radius: 12px;
-      padding: 30px;
-      text-align: center;
-    }
-
-    .error {
-      color: #b91c1c;
-    }
-
-    .games {
-      display: grid;
-      gap: 18px;
-    }
-
-    .game-card {
-      background: white;
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.07);
-    }
-
-    .game-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 12px;
-      margin-bottom: 16px;
-    }
-
-    .game-time {
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .game-status {
-      font-size: 13px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #e5e7eb;
-    }
-
-    .status-preview {
-      background: #dbeafe;
-      color: #1d4ed8;
-    }
-
-    .status-live {
-      background: #fee2e2;
-      color: #b91c1c;
-      font-weight: 700;
-    }
-
-    .status-final {
-      background: #dcfce7;
-      color: #166534;
-    }
-
-    .teams {
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: 20px;
-    }
-
-    .team {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .team.away {
-      justify-content: flex-end;
-      text-align: right;
-    }
-
-    .team.home {
-      justify-content: flex-start;
-    }
-
-    .team-logo {
-      width: 60px;
-      height: 60px;
-      object-fit: contain;
-    }
-
-    .team-name {
-      font-size: 19px;
-      font-weight: 700;
-    }
-
-    .team-record {
-      margin-top: 4px;
-      color: #6b7280;
-      font-size: 13px;
-    }
-
-    .score {
-      font-size: 25px;
-      font-weight: 800;
-      min-width: 80px;
-      text-align: center;
-    }
-
-    .pitchers {
-      margin-top: 18px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .pitcher-box {
-      background: #f9fafb;
-      border-radius: 10px;
-      padding: 12px;
-    }
-
-    .pitcher-label {
-      color: #6b7280;
-      font-size: 12px;
-      margin-bottom: 5px;
-    }
-
-    .pitcher-name {
-      font-weight: 700;
-    }
-
-    .analysis-box {
-      margin-top: 18px;
-      padding: 15px;
-      background: #eff6ff;
-      border-left: 4px solid #2563eb;
-      border-radius: 8px;
-    }
-
-    .analysis-title {
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .analysis-text {
-      font-size: 14px;
-      line-height: 1.7;
-    }
-
-    .lineup-section {
-      margin-top: 18px;
-    }
-
-    .lineup-title {
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .lineups {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .lineup-box {
-      background: #f9fafb;
-      padding: 12px;
-      border-radius: 10px;
-    }
-
-    .lineup-box ol {
-      margin: 8px 0 0 20px;
-      padding: 0;
-    }
-
-    .lineup-box li {
-      margin-bottom: 5px;
-      font-size: 13px;
-    }
-
-    .completeness {
-      margin-top: 18px;
-    }
-
-    .completeness-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 13px;
-    }
-
-    .progress {
-      width: 100%;
-      height: 8px;
-      background: #e5e7eb;
-      border-radius: 999px;
-      overflow: hidden;
-    }
-
-    .progress-bar {
-      height: 100%;
-      background: #2563eb;
-    }
-
-    .footer-note {
-      margin-top: 25px;
-      font-size: 12px;
-      color: #6b7280;
-      line-height: 1.7;
-    }
-
-    @media (max-width: 800px) {
-      .summary {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .teams {
-        grid-template-columns: 1fr;
-        text-align: center;
-      }
-
-      .team.away,
-      .team.home {
-        justify-content: center;
-        text-align: center;
-      }
-
-      .score {
-        margin: 0 auto;
-      }
-
-      .pitchers,
-      .lineups {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 500px) {
-      h1 {
-        font-size: 23px;
-      }
-
-      .summary {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .team-logo {
-        width: 48px;
-        height: 48px;
-      }
-
-      .team-name {
-        font-size: 16px;
-      }
-    }
-  </style>
+
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>MLB 分析中心</title>
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f4f5f7;
+  color: #222;
+  font-family:
+    Arial,
+    "Microsoft JhengHei",
+    "Noto Sans TC",
+    sans-serif;
+}
+
+/* =========================
+   Header
+========================= */
+
+header {
+  background: #111;
+  color: white;
+  padding: 18px;
+}
+
+.header-inner {
+  max-width: 1250px;
+  margin: auto;
+}
+
+h1 {
+  margin: 0;
+  font-size: 25px;
+}
+
+.subtitle {
+  margin-top: 5px;
+  color: #aaa;
+  font-size: 13px;
+}
+
+/* =========================
+   Container
+========================= */
+
+.container {
+  max-width: 1250px;
+  margin: auto;
+  padding: 15px;
+}
+
+/* =========================
+   Date
+========================= */
+
+.date-bar {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 15px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.date-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+.date-buttons button {
+  border: 1px solid #ddd;
+  background: white;
+  padding: 8px 13px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.date-buttons button:hover {
+  background: #eee;
+}
+
+.date-buttons .today {
+  background: #111;
+  color: white;
+}
+
+.date-current {
+  font-weight: bold;
+}
+
+/* =========================
+   Summary
+========================= */
+
+.summary {
+  display: grid;
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.summary-box {
+  background: white;
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.summary-title {
+  font-size: 12px;
+  color: #888;
+}
+
+.summary-value {
+  font-size: 22px;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+/* =========================
+   Game
+========================= */
+
+.game-card {
+  background: white;
+  margin-bottom: 15px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid #ddd;
+}
+
+.game-top {
+  padding: 11px 15px;
+  border-bottom: 1px solid #eee;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.game-time {
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.game-status {
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 4px;
+  background: #eee;
+}
+
+.status-preview {
+  background: #e8f1ff;
+  color: #1455b8;
+}
+
+.status-live {
+  background: #ffe4e4;
+  color: #c40000;
+}
+
+.status-final {
+  background: #e4f7e9;
+  color: #147333;
+}
+
+/* =========================
+   Teams
+========================= */
+
+.teams {
+  display: grid;
+  grid-template-columns:
+    1fr 90px 1fr;
+
+  align-items: center;
+  padding: 18px;
+  gap: 10px;
+}
+
+.team {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.team.away {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.team.home {
+  justify-content: flex-start;
+}
+
+.logo {
+  width: 55px;
+  height: 55px;
+  object-fit: contain;
+}
+
+.team-name {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.score {
+  text-align: center;
+  font-size: 25px;
+  font-weight: bold;
+}
+
+/* =========================
+   Pitcher
+========================= */
+
+.pitcher {
+  border-top: 1px solid #eee;
+  padding: 12px 18px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.pitcher-box {
+  background: #fafafa;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.pitcher-title {
+  font-size: 12px;
+  color: #888;
+}
+
+.pitcher-name {
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+/* =========================
+   Data table
+========================= */
+
+.data-section {
+  border-top: 1px solid #eee;
+  padding: 15px;
+}
+
+.data-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  text-align: center;
+}
+
+.data-table th {
+  background: #f5f5f5;
+}
+
+/* =========================
+   Analysis
+========================= */
+
+.analysis {
+  background: #f5f9ff;
+  border-left: 4px solid #2864d7;
+  padding: 13px;
+  margin: 0 15px 15px;
+  border-radius: 4px;
+}
+
+.analysis-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.analysis-text {
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* =========================
+   Loading
+========================= */
+
+.loading,
+.empty,
+.error {
+  background: white;
+  padding: 35px;
+  text-align: center;
+  border-radius: 8px;
+}
+
+/* =========================
+   Responsive
+========================= */
+
+@media(max-width: 750px) {
+
+  .summary {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .teams {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .team.away,
+  .team.home {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .score {
+    order: 3;
+  }
+
+  .pitcher {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+</style>
+
 </head>
+
 
 <body>
 
+
 <header>
+
   <div class="header-inner">
-    <h1>⚾ MLB 今日賽事分析</h1>
+
+    <h1>⚾ MLB 分析中心</h1>
+
     <div class="subtitle">
-      以台灣時間為基準｜MLB 官方資料
+      PlaySport 賽事日期｜MLB 官方資料｜賽前分析
     </div>
+
   </div>
+
 </header>
+
 
 <div class="container">
 
-  <!-- 日期 -->
-  <section class="date-panel">
 
-    <div class="date-title">
-      🇹🇼 台灣時間
-    </div>
+<!-- =========================
+     日期
+========================= -->
 
-    <div class="date-controls">
+<div class="date-bar">
 
-      <button id="prevBtn">
-        ← 前一天
-      </button>
+  <div class="date-buttons">
 
-      <button id="todayBtn" class="today-btn">
-        今天
-      </button>
+    <button id="prevDay">
+      ← 09/12
+    </button>
 
-      <button id="nextBtn">
-        後一天 →
-      </button>
+    <button id="today" class="today">
+      09/13 今天
+    </button>
 
-      <input
-        type="date"
-        id="dateInput"
-      />
+    <button id="nextDay">
+      09/14 →
+    </button>
 
-    </div>
-
-    <div class="taiwan-date" id="selectedDateText">
-      載入中...
-    </div>
-
-  </section>
-
-  <!-- 統計 -->
-  <section class="summary">
-
-    <div class="summary-card">
-      <div class="summary-label">
-        今日比賽
-      </div>
-      <div class="summary-value" id="totalGames">
-        -
-      </div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-label">
-        尚未開打
-      </div>
-      <div class="summary-value" id="previewGames">
-        -
-      </div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-label">
-        進行中
-      </div>
-      <div class="summary-value" id="liveGames">
-        -
-      </div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-label">
-        已結束
-      </div>
-      <div class="summary-value" id="finalGames">
-        -
-      </div>
-    </div>
-
-  </section>
-
-  <div id="content">
-    <div class="loading">
-      正在載入 MLB 賽程...
-    </div>
   </div>
 
-  <div class="footer-note">
-    資料來源：MLB Stats API。<br>
-    預測功能目前先保留資料入口；後續會加入戰績、近10場、先發投手、
-    打線、牛棚、傷兵、H2H、賽程疲勞、天氣、PlaySport 賠率及模型預測。
+  <div class="date-current" id="dateText">
+    2026/09/13
   </div>
 
 </div>
 
+
+<!-- =========================
+     Summary
+========================= -->
+
+<div class="summary">
+
+  <div class="summary-box">
+
+    <div class="summary-title">
+      今日比賽
+    </div>
+
+    <div
+      class="summary-value"
+      id="totalGames"
+    >
+      -
+    </div>
+
+  </div>
+
+
+  <div class="summary-box">
+
+    <div class="summary-title">
+      尚未開打
+    </div>
+
+    <div
+      class="summary-value"
+      id="previewGames"
+    >
+      -
+    </div>
+
+  </div>
+
+
+  <div class="summary-box">
+
+    <div class="summary-title">
+      進行中
+    </div>
+
+    <div
+      class="summary-value"
+      id="liveGames"
+    >
+      -
+    </div>
+
+  </div>
+
+
+  <div class="summary-box">
+
+    <div class="summary-title">
+      已結束
+    </div>
+
+    <div
+      class="summary-value"
+      id="finalGames"
+    >
+      -
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =========================
+     Games
+========================= -->
+
+<div id="games">
+
+  <div class="loading">
+    正在載入 2026/09/13 MLB 比賽...
+  </div>
+
+</div>
+
+
+</div>
+
+
 <script>
 
-  const MLB_API = "https://statsapi.mlb.com/api/v1";
+/* =====================================================
+   基本設定
+===================================================== */
 
-  /*
-   * ==========================================================
-   * 台灣日期系統
-   * ==========================================================
-   *
-   * 整個網站不使用 new Date() 直接判斷「今天是哪一天」。
-   *
-   * 所有日期都以：
-   *
-   * Asia/Taipei
-   *
-   * 為準。
-   */
-
-  function getTaiwanDateString() {
-
-    const parts = new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone: "Asia/Taipei",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-      }
-    ).formatToParts(new Date());
-
-    const data = {};
-
-    parts.forEach(part => {
-      if (part.type !== "literal") {
-        data[part.type] = part.value;
-      }
-    });
-
-    return `${data.year}-${data.month}-${data.day}`;
-  }
+const MLB_API =
+  "https://statsapi.mlb.com/api/v1";
 
 
-  /*
-   * 日期加減
-   *
-   * 不直接操作當地時間，
-   * 避免時區造成日期跳一天。
-   */
+/*
+ * 非常重要：
+ *
+ * 日期完全按照 PlaySport：
+ *
+ * 2026-09-13
+ *
+ * ↓
+ *
+ * 20260913
+ */
 
-  function addDays(dateString, days) {
+let selectedDate =
+  "2026-09-13";
 
-    const [year, month, day] =
-      dateString.split("-").map(Number);
 
-    const date =
-      new Date(Date.UTC(year, month - 1, day));
+/* =====================================================
+   日期工具
+===================================================== */
 
-    date.setUTCDate(
-      date.getUTCDate() + days
+function dateToPlaySport(date) {
+
+  return date.replaceAll("-", "");
+
+}
+
+
+function addDays(dateString, days) {
+
+  const parts =
+    dateString
+      .split("-")
+      .map(Number);
+
+  const date =
+    new Date(
+      Date.UTC(
+        parts[0],
+        parts[1] - 1,
+        parts[2]
+      )
     );
 
-    return date
-      .toISOString()
-      .slice(0, 10);
-  }
+  date.setUTCDate(
+    date.getUTCDate() + days
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+
+}
 
 
-  /*
-   * 將 MLB gameDate
-   * 轉成台灣日期
-   */
+function formatDate(date) {
 
-  function getTaiwanDateFromISO(isoString) {
+  const parts =
+    date.split("-");
 
-    const parts = new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone: "Asia/Taipei",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-      }
-    ).formatToParts(
-      new Date(isoString)
+  return `${parts[0]}/${parts[1]}/${parts[2]}`;
+
+}
+
+
+function getPlaySportURL() {
+
+  return (
+    "https://www.playsport.cc/livescore/1" +
+    "?gamedate=" +
+    dateToPlaySport(selectedDate) +
+    "&mode=2"
+  );
+
+}
+
+
+/* =====================================================
+   更新日期
+===================================================== */
+
+function updateDateUI() {
+
+  const previous =
+    addDays(selectedDate, -1);
+
+  const next =
+    addDays(selectedDate, 1);
+
+  document
+    .getElementById("prevDay")
+    .textContent =
+      `← ${previous.slice(5).replace("-", "/")}`;
+
+  document
+    .getElementById("nextDay")
+    .textContent =
+      `${next.slice(5).replace("-", "/")} →`;
+
+  document
+    .getElementById("today")
+    .textContent =
+      selectedDate === "2026-09-13"
+      ? "09/13 今天"
+      : "回到 09/13";
+
+  document
+    .getElementById("dateText")
+    .textContent =
+      `${formatDate(selectedDate)} ｜ PlaySport ${dateToPlaySport(selectedDate)}`;
+
+}
+
+
+/* =====================================================
+   MLB API
+===================================================== */
+
+async function getJSON(url) {
+
+  const response =
+    await fetch(url);
+
+  if (!response.ok) {
+
+    throw new Error(
+      `API ${response.status}`
     );
 
-    const data = {};
-
-    parts.forEach(part => {
-      if (part.type !== "literal") {
-        data[part.type] = part.value;
-      }
-    });
-
-    return `${data.year}-${data.month}-${data.day}`;
   }
 
+  return response.json();
 
-  /*
-   * 將 MLB 開賽時間
-   * 轉成台灣時間
-   */
-
-  function formatTaiwanTime(isoString) {
-
-    return new Intl.DateTimeFormat(
-      "zh-TW",
-      {
-        timeZone: "Asia/Taipei",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      }
-    ).format(
-      new Date(isoString)
-    );
-  }
+}
 
 
-  /*
-   * ==========================================================
-   * 全域狀態
-   * ==========================================================
-   */
+/* =====================================================
+   載入 MLB
+===================================================== */
 
-  let selectedDate =
-    getTaiwanDateString();
+async function loadMLBGames() {
+
+  const gamesBox =
+    document.getElementById("games");
+
+  gamesBox.innerHTML = `
+    <div class="loading">
+      正在載入 ${formatDate(selectedDate)}
+      MLB 比賽...
+    </div>
+  `;
+
+  updateDateUI();
 
 
-  /*
-   * ==========================================================
-   * 日期顯示
-   * ==========================================================
-   */
+  try {
 
-  function updateDateUI() {
+    /*
+     * MLB API 用同一天日期抓取。
+     *
+     * PlaySport 日期則負責決定
+     * 我們現在看的「哪一天」。
+     */
 
-    const today =
-      getTaiwanDateString();
+    const playSportDate =
+      dateToPlaySport(selectedDate);
 
-    const yesterday =
-      addDays(today, -1);
 
-    const tomorrow =
-      addDays(today, 1);
+    const url =
+      `${MLB_API}/schedule` +
+      `?sportId=1` +
+      `&date=${selectedDate}` +
+      `&hydrate=team,probablePitcher`;
 
-    let label = "";
 
-    if (selectedDate === today) {
+    const data =
+      await getJSON(url);
 
-      label =
-        `🇹🇼 ${selectedDate}（今天）`;
 
-    } else if (selectedDate === yesterday) {
+    let games = [];
 
-      label =
-        `🇹🇼 ${selectedDate}（昨天）`;
+    if (data.dates) {
 
-    } else if (selectedDate === tomorrow) {
+      data.dates.forEach(day => {
 
-      label =
-        `🇹🇼 ${selectedDate}（明天）`;
+        if (day.games) {
 
-    } else {
+          games =
+            games.concat(day.games);
 
-      label =
-        `🇹🇼 ${selectedDate}`;
+        }
+
+      });
 
     }
 
-    document
-      .getElementById("selectedDateText")
-      .textContent = label;
 
-    document
-      .getElementById("dateInput")
-      .value = selectedDate;
-  }
+    /*
+     * 排序
+     */
 
-
-  /*
-   * ==========================================================
-   * API
-   * ==========================================================
-   */
-
-  async function getJSON(url) {
-
-    const response =
-      await fetch(url);
-
-    if (!response.ok) {
-
-      throw new Error(
-        `API 錯誤：${response.status}`
-      );
-    }
-
-    return response.json();
-  }
+    games.sort(
+      (a, b) =>
+        new Date(a.gameDate) -
+        new Date(b.gameDate)
+    );
 
 
-  /*
-   * ==========================================================
-   * 載入指定台灣日期的比賽
-   * ==========================================================
-   *
-   * 注意：
-   *
-   * MLB API 的 schedule date 是美國賽程日期。
-   *
-   * 台灣時間可能會跨日。
-   *
-   * 所以我們抓：
-   *
-   * 前一天
-   * 今天
-   * 後一天
-   *
-   * 再根據 gameDate 真正轉成台灣時間後篩選。
-   */
-
-  async function loadGames() {
-
-    const content =
-      document.getElementById("content");
-
-    content.innerHTML = `
-      <div class="loading">
-        正在載入 ${selectedDate} 的 MLB 比賽...
-      </div>
-    `;
-
-    updateDateUI();
-
-    try {
-
-      const startDate =
-        addDays(selectedDate, -1);
-
-      const endDate =
-        addDays(selectedDate, 1);
-
-      const url =
-        `${MLB_API}/schedule` +
-        `?sportId=1` +
-        `&startDate=${startDate}` +
-        `&endDate=${endDate}` +
-        `&hydrate=team,probablePitcher`;
-
-      const data =
-        await getJSON(url);
-
-      let allGames = [];
-
-      if (data.dates) {
-
-        data.dates.forEach(date => {
-
-          if (date.games) {
-
-            allGames =
-              allGames.concat(date.games);
-
-          }
-
-        });
-
-      }
-
-
-      /*
-       * 真正按照台灣日期篩選
-       */
-
-      const games =
-        allGames.filter(game => {
-
-          return (
-            getTaiwanDateFromISO(
-              game.gameDate
-            ) === selectedDate
-          );
-
-        });
-
-
-      /*
-       * 排序
-       */
-
-      games.sort(
-        (a, b) =>
-          new Date(a.gameDate) -
-          new Date(b.gameDate)
-      );
-
-
-      updateSummary(games);
-
-      if (games.length === 0) {
-
-        content.innerHTML = `
-          <div class="empty">
-            <h3>今天沒有找到 MLB 比賽</h3>
-            <p>
-              日期：
-              ${selectedDate}
-            </p>
-          </div>
-        `;
-
-        return;
-      }
-
-
-      /*
-       * 先顯示基本卡片
-       */
-
-      content.innerHTML =
-        `<div class="games" id="gamesList"></div>`;
-
-      const gamesList =
-        document.getElementById("gamesList");
-
-
-      /*
-       * 每場比賽
-       */
-
-      for (const game of games) {
-
-        const card =
-          await createGameCard(game);
-
-        gamesList.appendChild(card);
-
-      }
-
-    } catch (error) {
-
-      console.error(error);
-
-      content.innerHTML = `
-        <div class="error">
-
-          <h3>⚠️ 資料載入失敗</h3>
-
-          <p>
-            ${error.message}
-          </p>
-
-          <button onclick="loadGames()">
-            重新載入
-          </button>
-
-        </div>
-      `;
-
-    }
-
-  }
-
-
-  /*
-   * ==========================================================
-   * 統計
-   * ==========================================================
-   */
-
-  function updateSummary(games) {
+    /*
+     * Summary
+     */
 
     let preview = 0;
     let live = 0;
     let final = 0;
+
 
     games.forEach(game => {
 
@@ -880,11 +740,15 @@
 
         preview++;
 
-      } else if (state === "Live") {
+      }
+
+      else if (state === "Live") {
 
         live++;
 
-      } else if (state === "Final") {
+      }
+
+      else if (state === "Final") {
 
         final++;
 
@@ -892,774 +756,762 @@
 
     });
 
+
     document
       .getElementById("totalGames")
-      .textContent = games.length;
+      .textContent =
+        games.length;
 
     document
       .getElementById("previewGames")
-      .textContent = preview;
+      .textContent =
+        preview;
 
     document
       .getElementById("liveGames")
-      .textContent = live;
+      .textContent =
+        live;
 
     document
       .getElementById("finalGames")
-      .textContent = final;
-
-  }
-
-
-  /*
-   * ==========================================================
-   * 建立比賽卡片
-   * ==========================================================
-   */
-
-  async function createGameCard(game) {
-
-    /*
-     * 再抓一次 live feed
-     *
-     * 用來取得：
-     *
-     * - lineup
-     * - 即時比分
-     * - 更完整資料
-     */
-
-    let feed = null;
-
-    try {
-
-      feed =
-        await getJSON(
-          `${MLB_API}/game/${game.gamePk}/feed/live`
-        );
-
-    } catch (error) {
-
-      console.warn(
-        "Live feed 取得失敗",
-        game.gamePk
-      );
-
-    }
+      .textContent =
+        final;
 
 
-    const gameData =
-      feed?.gameData || {};
+    if (!games.length) {
 
-    const liveData =
-      feed?.liveData || {};
+      gamesBox.innerHTML = `
+        <div class="empty">
 
+          <h3>
+            ${formatDate(selectedDate)}
+            沒有找到 MLB 比賽
+          </h3>
 
-    const away =
-      game.teams.away;
+          <p>
+            PlaySport 日期：
+            ${playSportDate}
+          </p>
 
-    const home =
-      game.teams.home;
-
-
-    const status =
-      game.status?.abstractGameState ||
-      "Preview";
-
-
-    /*
-     * 狀態文字
-     */
-
-    let statusText =
-      "尚未開打";
-
-    let statusClass =
-      "status-preview";
-
-    if (status === "Live") {
-
-      statusText =
-        "🔴 比賽進行中";
-
-      statusClass =
-        "status-live";
-
-    } else if (status === "Final") {
-
-      statusText =
-        "✅ 比賽已結束";
-
-      statusClass =
-        "status-final";
-
-    }
-
-
-    /*
-     * 比分
-     */
-
-    let scoreHTML =
-      `<div class="score">VS</div>`;
-
-    if (
-      status === "Live" ||
-      status === "Final"
-    ) {
-
-      scoreHTML = `
-        <div class="score">
-          ${away.score ?? 0}
-          -
-          ${home.score ?? 0}
         </div>
       `;
 
+      return;
+
     }
 
 
-    /*
-     * 先發投手
-     */
-
-    const probableAway =
-      gameData.probablePitchers?.away ||
-      game.teams.away.probablePitcher;
-
-    const probableHome =
-      gameData.probablePitchers?.home ||
-      game.teams.home.probablePitcher;
-
-
-    const awayPitcher =
-      probableAway?.fullName ||
-      probableAway?.person?.fullName ||
-      "尚未公布";
-
-    const homePitcher =
-      probableHome?.fullName ||
-      probableHome?.person?.fullName ||
-      "尚未公布";
+    gamesBox.innerHTML = "";
 
 
     /*
-     * 打線
+     * 建立每一場
      */
 
-    const awayLineup =
-      getLineup(
-        liveData,
-        away.team.id,
-        "away"
-      );
+    for (const game of games) {
 
-    const homeLineup =
-      getLineup(
-        liveData,
-        home.team.id,
-        "home"
-      );
+      const card =
+        await createGameCard(game);
 
+      gamesBox.appendChild(card);
 
-    /*
-     * 完整度
-     */
+    }
 
-    const completeness =
-      calculateCompleteness(
-        probableAway,
-        probableHome,
-        awayLineup,
-        homeLineup
-      );
 
+  }
 
-    /*
-     * 建立卡片
-     */
+  catch(error) {
 
-    const card =
-      document.createElement("article");
+    console.error(error);
 
-    card.className =
-      "game-card";
+    gamesBox.innerHTML = `
 
+      <div class="error">
 
-    /*
-     * 賽季階段
-     */
+        <h3>
+          ⚠️ MLB 資料載入失敗
+        </h3>
 
-    const seasonStage =
-      getSeasonStage();
+        <p>
+          ${error.message}
+        </p>
 
-
-    card.innerHTML = `
-
-      <div class="game-header">
-
-        <div>
-
-          <div class="game-time">
-            ${formatTaiwanTime(game.gameDate)}
-          </div>
-
-          <div style="
-            color:#6b7280;
-            font-size:12px;
-            margin-top:4px;
-          ">
-            台灣時間｜${seasonStage}
-          </div>
-
-        </div>
-
-        <div class="game-status ${statusClass}">
-          ${statusText}
-        </div>
-
-      </div>
-
-
-      <div class="teams">
-
-        <div class="team away">
-
-          <div>
-
-            <div class="team-name">
-              ${away.team.name}
-            </div>
-
-            <div class="team-record">
-              客場｜2026 賽季
-            </div>
-
-          </div>
-
-          <img
-            class="team-logo"
-            src="https://www.mlbstatic.com/team-logos/${away.team.id}.svg"
-            alt="${away.team.name}"
-            onerror="this.style.display='none'"
-          />
-
-        </div>
-
-
-        ${scoreHTML}
-
-
-        <div class="team home">
-
-          <img
-            class="team-logo"
-            src="https://www.mlbstatic.com/team-logos/${home.team.id}.svg"
-            alt="${home.team.name}"
-            onerror="this.style.display='none'"
-          />
-
-          <div>
-
-            <div class="team-name">
-              ${home.team.name}
-            </div>
-
-            <div class="team-record">
-              主場｜2026 賽季
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="pitchers">
-
-        <div class="pitcher-box">
-
-          <div class="pitcher-label">
-            客隊先發
-          </div>
-
-          <div class="pitcher-name">
-            ${awayPitcher}
-          </div>
-
-        </div>
-
-
-        <div class="pitcher-box">
-
-          <div class="pitcher-label">
-            主隊先發
-          </div>
-
-          <div class="pitcher-name">
-            ${homePitcher}
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="analysis-box">
-
-        <div class="analysis-title">
-          ${status === "Preview"
-            ? "🔍 賽前分析狀態"
-            : status === "Live"
-              ? "📡 比賽進行中"
-              : "📊 賽後資料"}
-        </div>
-
-        <div class="analysis-text">
-
-          ${
-            status === "Preview"
-            ?
-            `
-              目前進入賽前分析流程。<br>
-              先發投手：
-              ${probableAway ? "✔" : "✖"}
-              客隊｜
-              ${probableHome ? "✔" : "✖"}
-              主隊<br>
-              打線：
-              ${awayLineup.length}/9 客隊｜
-              ${homeLineup.length}/9 主隊
-            `
-            :
-            status === "Live"
-            ?
-            `
-              比賽已開始，網站會優先保留賽前資料，
-              並逐步更新即時比分與比賽狀態。
-            `
-            :
-            `
-              比賽已結束，後續將進入
-              「預測 vs 實際結果」評估。
-            `
-          }
-
-        </div>
-
-      </div>
-
-
-      <div class="lineup-section">
-
-        <div class="lineup-title">
-          預計 / 已公布打線
-        </div>
-
-        <div class="lineups">
-
-          <div class="lineup-box">
-
-            <strong>
-              ${away.team.name}
-            </strong>
-
-            ${
-              awayLineup.length
-              ?
-              `<ol>
-                ${
-                  awayLineup
-                    .map(player =>
-                      `<li>${player}</li>`
-                    )
-                    .join("")
-                }
-              </ol>`
-              :
-              `<div style="
-                margin-top:8px;
-                color:#6b7280;
-                font-size:13px;
-              ">
-                尚未公布
-              </div>`
-            }
-
-          </div>
-
-
-          <div class="lineup-box">
-
-            <strong>
-              ${home.team.name}
-            </strong>
-
-            ${
-              homeLineup.length
-              ?
-              `<ol>
-                ${
-                  homeLineup
-                    .map(player =>
-                      `<li>${player}</li>`
-                    )
-                    .join("")
-                }
-              </ol>`
-              :
-              `<div style="
-                margin-top:8px;
-                color:#6b7280;
-                font-size:13px;
-              ">
-                尚未公布
-              </div>`
-            }
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="completeness">
-
-        <div class="completeness-header">
-
-          <span>
-            📊 資料完整度
-          </span>
-
-          <strong>
-            ${completeness}%
-          </strong>
-
-        </div>
-
-        <div class="progress">
-
-          <div
-            class="progress-bar"
-            style="width:${completeness}%"
-          ></div>
-
-        </div>
+        <button onclick="loadMLBGames()">
+          重新載入
+        </button>
 
       </div>
 
     `;
 
+  }
 
-    return card;
+}
+
+
+/* =====================================================
+   建立比賽
+===================================================== */
+
+async function createGameCard(game) {
+
+  let feed = null;
+
+
+  try {
+
+    feed =
+      await getJSON(
+        `${MLB_API}/game/${game.gamePk}/feed/live`
+      );
+
+  }
+
+  catch(error) {
+
+    console.warn(
+      "Live Feed 讀取失敗",
+      game.gamePk
+    );
+
+  }
+
+
+  const gameData =
+    feed?.gameData || {};
+
+  const liveData =
+    feed?.liveData || {};
+
+
+  const away =
+    game.teams.away;
+
+  const home =
+    game.teams.home;
+
+
+  const status =
+    game.status?.abstractGameState ||
+    "Preview";
+
+
+  let statusText =
+    "尚未開打";
+
+  let statusClass =
+    "status-preview";
+
+
+  if (status === "Live") {
+
+    statusText =
+      "🔴 進行中";
+
+    statusClass =
+      "status-live";
+
+  }
+
+  else if (status === "Final") {
+
+    statusText =
+      "✅ 比賽結束";
+
+    statusClass =
+      "status-final";
 
   }
 
 
   /*
-   * ==========================================================
-   * 取得打線
-   * ==========================================================
+   * 台灣顯示時間
    */
 
-  function getLineup(
-    liveData,
-    teamId,
-    side
+  const taiwanTime =
+    new Intl.DateTimeFormat(
+      "zh-TW",
+      {
+        timeZone: "Asia/Taipei",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }
+    )
+    .format(
+      new Date(game.gameDate)
+    );
+
+
+  /*
+   * 投手
+   */
+
+  const awayPitcher =
+    gameData.probablePitchers?.away;
+
+  const homePitcher =
+    gameData.probablePitchers?.home;
+
+
+  const awayPitcherName =
+    awayPitcher?.fullName ||
+    "尚未公布";
+
+
+  const homePitcherName =
+    homePitcher?.fullName ||
+    "尚未公布";
+
+
+  /*
+   * 比分
+   */
+
+  let score =
+    "VS";
+
+
+  if (
+    status === "Live" ||
+    status === "Final"
   ) {
 
-    const boxscore =
-      liveData.boxscore;
+    score =
+      `${away.score ?? 0} - ${home.score ?? 0}`;
 
-    const teamData =
-      boxscore?.teams?.[side];
+  }
 
-    if (!teamData) {
-      return [];
-    }
 
-    /*
-     * MLB boxscore 的 battingOrder
-     * 通常會是：
-     *
-     * 1, 2, 3...
-     *
-     * 實際玩家資料則在 players。
-     */
+  /*
+   * 建立卡片
+   */
 
-    const order =
-      teamData.battingOrder || [];
+  const card =
+    document.createElement("div");
 
-    const players =
-      teamData.players || {};
+  card.className =
+    "game-card";
 
-    const lineup = [];
 
-    order.forEach(orderNumber => {
+  card.innerHTML = `
 
-      const playerKey =
-        `ID${String(orderNumber).padStart(6, "0")}`;
+    <div class="game-top">
 
-      /*
-       * 有些資料結構不直接使用這個 key，
-       * 所以另外搜尋。
-       */
+      <div class="game-time">
+        ${taiwanTime}
+      </div>
 
-      let found = null;
+      <div class="game-status ${statusClass}">
+        ${statusText}
+      </div>
 
-      Object.values(players).forEach(player => {
+    </div>
 
-        if (
-          player.battingOrder === orderNumber
-        ) {
-          found = player;
+
+    <div class="teams">
+
+      <div class="team away">
+
+        <div>
+
+          <div class="team-name">
+            ${away.team.name}
+          </div>
+
+          <div style="
+            color:#888;
+            font-size:12px;
+            margin-top:3px;
+          ">
+            客隊
+          </div>
+
+        </div>
+
+
+        <img
+          class="logo"
+          src="https://www.mlbstatic.com/team-logos/${away.team.id}.svg"
+          alt="${away.team.name}"
+        >
+
+      </div>
+
+
+      <div class="score">
+        ${score}
+      </div>
+
+
+      <div class="team home">
+
+        <img
+          class="logo"
+          src="https://www.mlbstatic.com/team-logos/${home.team.id}.svg"
+          alt="${home.team.name}"
+        >
+
+
+        <div>
+
+          <div class="team-name">
+            ${home.team.name}
+          </div>
+
+          <div style="
+            color:#888;
+            font-size:12px;
+            margin-top:3px;
+          ">
+            主隊
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- 投手 -->
+
+    <div class="pitcher">
+
+      <div class="pitcher-box">
+
+        <div class="pitcher-title">
+          客隊先發
+        </div>
+
+        <div class="pitcher-name">
+          ${awayPitcherName}
+        </div>
+
+      </div>
+
+
+      <div class="pitcher-box">
+
+        <div class="pitcher-title">
+          主隊先發
+        </div>
+
+        <div class="pitcher-name">
+          ${homePitcherName}
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- 團隊資料 -->
+
+    <div class="data-section">
+
+      <div class="data-title">
+        團隊資料
+      </div>
+
+
+      <table class="data-table">
+
+        <thead>
+
+          <tr>
+
+            <th>
+              項目
+            </th>
+
+            <th>
+              ${away.team.name}
+            </th>
+
+            <th>
+              ${home.team.name}
+            </th>
+
+          </tr>
+
+        </thead>
+
+
+        <tbody>
+
+          <tr>
+
+            <td>
+              2026 戰績
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              主 / 客戰績
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              近10場
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              H2H
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              AVG
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              OPS
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              平均得 / 失分
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+
+    <!-- 市場 -->
+
+    <div class="data-section">
+
+      <div class="data-title">
+        市場資料
+      </div>
+
+
+      <table class="data-table">
+
+        <thead>
+
+          <tr>
+
+            <th>
+              項目
+            </th>
+
+            <th>
+              客隊
+            </th>
+
+            <th>
+              主隊
+            </th>
+
+          </tr>
+
+        </thead>
+
+
+        <tbody>
+
+          <tr>
+
+            <td>
+              今日讓分
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              讓分過盤率
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              近10場過盤率
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+            <td>
+              待接入
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              大小分
+            </td>
+
+            <td colspan="2">
+              待接入
+            </td>
+
+          </tr>
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+
+    <!-- 分析 -->
+
+    <div class="analysis">
+
+      <div class="analysis-title">
+        🔍 賽前分析
+      </div>
+
+
+      <div class="analysis-text">
+
+        ${
+          status === "Preview"
+
+          ?
+
+          `
+          比賽尚未開始。<br>
+          目前已取得：
+          <br>
+          ✔ 球隊
+          <br>
+          ✔ Logo
+          <br>
+          ✔ 開賽時間
+          <br>
+          ${awayPitcher ? "✔" : "✖"}
+          客隊先發
+          <br>
+          ${homePitcher ? "✔" : "✖"}
+          主隊先發
+          <br><br>
+
+          下一階段將加入 PlaySport：
+          戰績、近10場、H2H、
+          得失分、團隊打擊及市場盤口。
+          `
+
+          :
+
+          status === "Live"
+
+          ?
+
+          `
+          比賽進行中。<br>
+          即時比分：
+          ${away.team.name}
+          ${away.score ?? 0}
+          -
+          ${home.score ?? 0}
+          ${home.team.name}
+          `
+
+          :
+
+          `
+          比賽已結束。<br>
+          後續將用於：
+          預測 vs 實際結果
+          的模型驗證。
+          `
+
         }
 
-      });
+      </div>
 
-      if (found) {
+    </div>
 
-        const name =
-          found.person?.fullName;
-
-        if (name) {
-          lineup.push(name);
-        }
-
-      }
-
-    });
+  `;
 
 
-    /*
-     * 如果上面的結構沒有抓到，
-     * 再使用 players 搜尋 battingOrder。
-     */
+  return card;
 
-    if (lineup.length === 0) {
+}
 
-      Object.values(players)
-        .filter(player =>
-          player.battingOrder
-        )
-        .sort(
-          (a, b) =>
-            a.battingOrder -
-            b.battingOrder
-        )
-        .forEach(player => {
 
-          if (
-            player.person?.fullName &&
-            !lineup.includes(
-              player.person.fullName
-            )
-          ) {
+/* =====================================================
+   日期按鈕
+===================================================== */
 
-            lineup.push(
-              player.person.fullName
-            );
+document
+  .getElementById("prevDay")
+  .addEventListener(
+    "click",
+    () => {
 
-          }
+      selectedDate =
+        addDays(
+          selectedDate,
+          -1
+        );
 
-        });
+      loadMLBGames();
 
     }
+  );
 
 
-    return lineup.slice(0, 9);
+document
+  .getElementById("nextDay")
+  .addEventListener(
+    "click",
+    () => {
 
-  }
+      selectedDate =
+        addDays(
+          selectedDate,
+          1
+        );
 
+      loadMLBGames();
 
-  /*
-   * ==========================================================
-   * 資料完整度
-   * ==========================================================
-   *
-   * 目前只是第一版。
-   *
-   * 後面加入：
-   *
-   * - 戰績
-   * - 近10
-   * - 投手完整數據
-   * - 牛棚
-   * - 傷兵
-   * - 天氣
-   * - PlaySport
-   *
-   * 之後會重新計算。
-   */
-
-  function calculateCompleteness(
-    awayPitcher,
-    homePitcher,
-    awayLineup,
-    homeLineup
-  ) {
-
-    let score = 0;
-
-    /*
-     * 客隊先發
-     */
-    if (awayPitcher) {
-      score += 15;
     }
+  );
 
-    /*
-     * 主隊先發
-     */
-    if (homePitcher) {
-      score += 15;
+
+document
+  .getElementById("today")
+  .addEventListener(
+    "click",
+    () => {
+
+      selectedDate =
+        "2026-09-13";
+
+      loadMLBGames();
+
     }
-
-    /*
-     * 客隊打線
-     */
-    if (awayLineup.length >= 9) {
-      score += 20;
-    } else if (awayLineup.length >= 6) {
-      score += 10;
-    }
-
-    /*
-     * 主隊打線
-     */
-    if (homeLineup.length >= 9) {
-      score += 20;
-    } else if (homeLineup.length >= 6) {
-      score += 10;
-    }
-
-    /*
-     * 目前先保留 30 分
-     *
-     * 未來會分配給：
-     *
-     * 戰績
-     * 近10
-     * 牛棚
-     * 傷兵
-     * 市場
-     * 天氣
-     */
-
-    score += 30;
-
-    return Math.min(
-      100,
-      score
-    );
-
-  }
+  );
 
 
-  /*
-   * ==========================================================
-   * 賽季階段
-   * ==========================================================
-   */
+/* =====================================================
+   啟動
+===================================================== */
 
-  function getSeasonStage() {
+updateDateUI();
 
-    /*
-     * 2026 MLB：
-     * 9 月中旬已經是例行賽後段。
-     */
-
-    return "例行賽後段";
-
-  }
-
-
-  /*
-   * ==========================================================
-   * 日期按鈕
-   * ==========================================================
-   */
-
-  document
-    .getElementById("prevBtn")
-    .addEventListener(
-      "click",
-      () => {
-
-        selectedDate =
-          addDays(
-            selectedDate,
-            -1
-          );
-
-        loadGames();
-
-      }
-    );
-
-
-  document
-    .getElementById("nextBtn")
-    .addEventListener(
-      "click",
-      () => {
-
-        selectedDate =
-          addDays(
-            selectedDate,
-            1
-          );
-
-        loadGames();
-
-      }
-    );
-
-
-  document
-    .getElementById("todayBtn")
-    .addEventListener(
-      "click",
-      () => {
-
-        selectedDate =
-          getTaiwanDateString();
-
-        loadGames();
-
-      }
-    );
-
-
-  document
-    .getElementById("dateInput")
-    .addEventListener(
-      "change",
-      event => {
-
-        selectedDate =
-          event.target.value;
-
-        loadGames();
-
-      }
-    );
-
-
-  /*
-   * ==========================================================
-   * 啟動
-   * ==========================================================
-   */
-
-  updateDateUI();
-
-  loadGames();
+loadMLBGames();
 
 </script>
 
 </body>
+
 </html>
 ```
