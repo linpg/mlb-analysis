@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="zh-Hant">
 
@@ -29,6 +28,7 @@ body {
     "Noto Sans TC",
     sans-serif;
 }
+
 
 /* ========================================
    HEADER
@@ -380,6 +380,18 @@ h1 {
   background: #f5f5f5;
 }
 
+.data-loading {
+  color: #888;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.data-error {
+  color: #b00000;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
 
 /* ========================================
    LIVE INFO
@@ -531,6 +543,15 @@ h1 {
       repeat(2, 1fr);
   }
 
+  .data-table {
+    font-size: 11px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 6px 3px;
+  }
+
 }
 
 
@@ -558,10 +579,6 @@ h1 {
 
 <body>
 
-
-<!-- ========================================
-     HEADER
-======================================== -->
 
 <header>
 
@@ -729,93 +746,55 @@ const MLB_API =
 
 
 /*
- * ================================================
- * 非常重要
+ * ========================================================
+ * PlaySport / 台灣日期
  *
- * selectedDate = 「PlaySport / 台灣日期」
- *
- * 例如：
+ * 這裡維持目前版本的邏輯：
  *
  * 2026-09-13
+ * ↓
+ * MLB API 查 2026-09-12
  *
- * 對應：
- *
- * PlaySport 20260913
- *
- * MLB 官方 schedule 要查：
- *
- * 2026-09-12
- *
- * 因為 MLB 美國當地日期比台灣慢一天。
- * ================================================
+ * 不再另外修改。
+ * ========================================================
  */
 
 let selectedDate =
   "2026-09-13";
 
 
-/*
- * 即時更新 Timer
- */
-
 let liveUpdateTimer = null;
 
 
 /*
- * 防止切換日期後，
- * 舊的更新程序繼續寫入畫面
+ * 防止切日期後，
+ * 舊請求覆蓋新頁面
  */
 
 let pageVersion = 0;
+
+
+/*
+ * 團隊資料快取
+ */
+
+const teamAnalysisCache =
+  new Map();
 
 
 /* =========================================================
    日期工具
 ========================================================= */
 
-
-/*
- * YYYY-MM-DD
- *
- * ↓
- *
- * YYYYMMDD
- */
-
 function dateToPlaySport(date) {
 
-  return date.replaceAll("-", "");
-
-}
-
-
-/*
- * PlaySport 日期
- *
- * ↓
- *
- * MLB API 查詢日期
- *
- * 例：
- *
- * PlaySport 2026-09-13
- *
- * MLB API 2026-09-12
- */
-
-function getMLBQueryDate() {
-
-  return addDays(
-    selectedDate,
-    -1
+  return date.replaceAll(
+    "-",
+    ""
   );
 
 }
 
-
-/*
- * 日期加減
- */
 
 function addDays(
   dateString,
@@ -850,17 +829,25 @@ function addDays(
 }
 
 
-/*
- * 顯示：
- *
- * 2026/09/13
- */
-
 function formatDate(date) {
 
   return date.replaceAll(
     "-",
     "/"
+  );
+
+}
+
+
+/* =========================================================
+   MLB 查詢日期
+========================================================= */
+
+function getMLBQueryDate() {
+
+  return addDays(
+    selectedDate,
+    -1
   );
 
 }
@@ -955,20 +942,10 @@ async function getJSON(url) {
 
 
 /* =========================================================
-   取得指定日期的 MLB 賽程
+   MLB 賽程
 ========================================================= */
 
 async function getMLBSchedule() {
-
-  /*
-   * 注意：
-   *
-   * 這裡不能用 selectedDate。
-   *
-   * 必須用：
-   *
-   * getMLBQueryDate()
-   */
 
   const mlbQueryDate =
     getMLBQueryDate();
@@ -1002,44 +979,33 @@ async function getMLBSchedule() {
 
   if (data.dates) {
 
-    data.dates.forEach(day => {
+    data.dates.forEach(
+      day => {
 
-      if (day.games) {
+        if (day.games) {
 
-        games =
-          games.concat(
-            day.games
-          );
+          games =
+            games.concat(
+              day.games
+            );
+
+        }
 
       }
-
-    });
+    );
 
   }
 
-
-  /*
-   * 只保留 MLB 比賽
-   */
 
   games =
     games.filter(
       game =>
         game.sport?.id === 1 ||
-        game.sport?.name === "Major League Baseball" ||
+        game.sport?.name ===
+          "Major League Baseball" ||
         game.gameType === "R"
     );
 
-
-  /*
-   * 排序
-   *
-   * 注意：
-   *
-   * MLB gameDate 是美國時間
-   *
-   * 這裡排序後再顯示台灣時間。
-   */
 
   games.sort(
     (a, b) =>
@@ -1059,21 +1025,12 @@ async function getMLBSchedule() {
 
 async function loadMLBGames() {
 
-  /*
-   * 每次切日期，
-   * 版本號 +1
-   */
-
   pageVersion++;
 
 
   const currentVersion =
     pageVersion;
 
-
-  /*
-   * 清掉舊的即時更新
-   */
 
   if (liveUpdateTimer) {
 
@@ -1087,7 +1044,9 @@ async function loadMLBGames() {
 
 
   const gamesBox =
-    document.getElementById("games");
+    document.getElementById(
+      "games"
+    );
 
 
   gamesBox.innerHTML = `
@@ -1113,21 +1072,13 @@ async function loadMLBGames() {
 
   try {
 
-    /*
-     * 取得正確日期的 MLB 賽程
-     */
-
     const games =
       await getMLBSchedule();
 
 
-    /*
-     * 如果使用者已經切換日期，
-     * 舊請求不要再寫畫面
-     */
-
     if (
-      currentVersion !== pageVersion
+      currentVersion !==
+      pageVersion
     ) {
 
       return;
@@ -1135,18 +1086,10 @@ async function loadMLBGames() {
     }
 
 
-    /*
-     * 統計
-     */
-
     updateSummary(
       games
     );
 
-
-    /*
-     * 沒有比賽
-     */
 
     if (!games.length) {
 
@@ -1166,7 +1109,9 @@ async function loadMLBGames() {
 
           <p>
             MLB API 查詢日期：
-            ${formatDate(getMLBQueryDate())}
+            ${formatDate(
+              getMLBQueryDate()
+            )}
           </p>
 
         </div>
@@ -1182,10 +1127,7 @@ async function loadMLBGames() {
 
 
     /*
-     * 建立比賽卡片
-     *
-     * 使用 Promise.all
-     * 避免一場一場慢慢等
+     * 同時建立所有卡片
      */
 
     const cards =
@@ -1199,12 +1141,9 @@ async function loadMLBGames() {
       );
 
 
-    /*
-     * 再確認日期沒有被切換
-     */
-
     if (
-      currentVersion !== pageVersion
+      currentVersion !==
+      pageVersion
     ) {
 
       return;
@@ -1212,25 +1151,18 @@ async function loadMLBGames() {
     }
 
 
-    cards.forEach(card => {
+    cards.forEach(
+      card => {
 
-      gamesBox.appendChild(
-        card
-      );
+        gamesBox.appendChild(
+          card
+        );
 
-    });
+      }
+    );
 
-
-    /*
-     * 更新時間
-     */
 
     updateRefreshTime();
-
-
-    /*
-     * 重新啟動即時更新
-     */
 
     startLiveRefresh();
 
@@ -1239,11 +1171,14 @@ async function loadMLBGames() {
 
   catch(error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     if (
-      currentVersion !== pageVersion
+      currentVersion !==
+      pageVersion
     ) {
 
       return;
@@ -1270,7 +1205,9 @@ async function loadMLBGames() {
 
         <p>
           MLB API 查詢：
-          ${formatDate(getMLBQueryDate())}
+          ${formatDate(
+            getMLBQueryDate()
+          )}
         </p>
 
         <button
@@ -1303,59 +1240,70 @@ function updateSummary(
   let final = 0;
 
 
-  games.forEach(game => {
+  games.forEach(
+    game => {
 
-    const state =
-      game.status?.abstractGameState;
+      const state =
+        game.status
+          ?.abstractGameState;
 
 
-    if (
-      state === "Preview"
-    ) {
+      if (
+        state === "Preview"
+      ) {
 
-      preview++;
+        preview++;
+
+      }
+
+      else if (
+        state === "Live"
+      ) {
+
+        live++;
+
+      }
+
+      else if (
+        state === "Final"
+      ) {
+
+        final++;
+
+      }
 
     }
-
-    else if (
-      state === "Live"
-    ) {
-
-      live++;
-
-    }
-
-    else if (
-      state === "Final"
-    ) {
-
-      final++;
-
-    }
-
-  });
+  );
 
 
   document
-    .getElementById("totalGames")
+    .getElementById(
+      "totalGames"
+    )
     .textContent =
       games.length;
 
 
   document
-    .getElementById("previewGames")
+    .getElementById(
+      "previewGames"
+    )
     .textContent =
       preview;
 
 
   document
-    .getElementById("liveGames")
+    .getElementById(
+      "liveGames"
+    )
     .textContent =
       live;
 
 
   document
-    .getElementById("finalGames")
+    .getElementById(
+      "finalGames"
+    )
     .textContent =
       final;
 
@@ -1394,7 +1342,7 @@ function getTaiwanTime(
 
 
 /* =========================================================
-   比賽狀態
+   狀態
 ========================================================= */
 
 function getStatusInfo(
@@ -1402,7 +1350,8 @@ function getStatusInfo(
 ) {
 
   const status =
-    game.status?.abstractGameState ||
+    game.status
+      ?.abstractGameState ||
     "Preview";
 
 
@@ -1411,8 +1360,12 @@ function getStatusInfo(
   ) {
 
     return {
+
       text: "🔴 進行中",
-      className: "status-live"
+
+      className:
+        "status-live"
+
     };
 
   }
@@ -1423,23 +1376,31 @@ function getStatusInfo(
   ) {
 
     return {
+
       text: "✅ 比賽結束",
-      className: "status-final"
+
+      className:
+        "status-final"
+
     };
 
   }
 
 
   return {
+
     text: "尚未開打",
-    className: "status-preview"
+
+    className:
+      "status-preview"
+
   };
 
 }
 
 
 /* =========================================================
-   取得先發投手
+   先發投手
 ========================================================= */
 
 function getPitcherName(
@@ -1456,7 +1417,7 @@ function getPitcherName(
 
 
 /* =========================================================
-   取得局數
+   局數
 ========================================================= */
 
 function getInningText(
@@ -1483,7 +1444,8 @@ function getInningText(
 
 
   return `${
-    linescore.inningHalf === "Top"
+    linescore.inningHalf ===
+    "Top"
       ? "上"
       : "下"
   }${linescore.currentInning}局`;
@@ -1492,7 +1454,7 @@ function getInningText(
 
 
 /* =========================================================
-   取得球數
+   球數
 ========================================================= */
 
 function getCount(
@@ -1503,9 +1465,7 @@ function getCount(
     liveData?.linescore;
 
 
-  if (
-    !linescore
-  ) {
+  if (!linescore) {
 
     return "-";
 
@@ -1531,6 +1491,1222 @@ function getCount(
 
 
   return `${balls}-${strikes}`;
+
+}
+
+
+/* =========================================================
+   Team Stats
+========================================================= */
+
+async function getTeamHittingStats(
+  teamId
+) {
+
+  const cacheKey =
+    `hitting-${teamId}-2026`;
+
+
+  if (
+    teamAnalysisCache.has(
+      cacheKey
+    )
+  ) {
+
+    return teamAnalysisCache.get(
+      cacheKey
+    );
+
+  }
+
+
+  const url =
+    `${MLB_API}/teams/${teamId}/stats` +
+    `?stats=season` +
+    `&group=hitting` +
+    `&season=2026`;
+
+
+  try {
+
+    const data =
+      await getJSON(
+        url
+      );
+
+
+    const stats =
+      data.stats?.[0]
+        ?.splits?.[0]
+        ?.stat || {};
+
+
+    teamAnalysisCache.set(
+      cacheKey,
+      stats
+    );
+
+
+    return stats;
+
+  }
+
+
+  catch(error) {
+
+    console.warn(
+      "打擊資料取得失敗",
+      teamId,
+      error
+    );
+
+
+    return {};
+
+  }
+
+}
+
+
+/* =========================================================
+   Standings
+========================================================= */
+
+async function getAllStandings() {
+
+  const cacheKey =
+    "standings-2026";
+
+
+  if (
+    teamAnalysisCache.has(
+      cacheKey
+    )
+  ) {
+
+    return teamAnalysisCache.get(
+      cacheKey
+    );
+
+  }
+
+
+  const url =
+    `${MLB_API}/standings` +
+    `?leagueId=103,104` +
+    `&season=2026` +
+    `&standingsTypes=regularSeason` +
+    `&hydrate=team`;
+
+
+  try {
+
+    const data =
+      await getJSON(
+        url
+      );
+
+
+    const map =
+      new Map();
+
+
+    for (
+      const group of
+      data.records || []
+    ) {
+
+      for (
+        const record of
+        group.teamRecords || []
+      ) {
+
+        if (
+          record.team?.id
+        ) {
+
+          map.set(
+            record.team.id,
+            record
+          );
+
+        }
+
+      }
+
+    }
+
+
+    teamAnalysisCache.set(
+      cacheKey,
+      map
+    );
+
+
+    return map;
+
+  }
+
+
+  catch(error) {
+
+    console.warn(
+      "Standings 取得失敗",
+      error
+    );
+
+
+    return new Map();
+
+  }
+
+}
+
+
+/* =========================================================
+   球隊歷史賽程
+========================================================= */
+
+async function getTeamSchedule(
+  teamId
+) {
+
+  const cacheKey =
+    `schedule-${teamId}-2026`;
+
+
+  if (
+    teamAnalysisCache.has(
+      cacheKey
+    )
+  ) {
+
+    return teamAnalysisCache.get(
+      cacheKey
+    );
+
+  }
+
+
+  const endDate =
+    getMLBQueryDate();
+
+
+  const url =
+    `${MLB_API}/schedule` +
+    `?sportId=1` +
+    `&teamId=${teamId}` +
+    `&season=2026` +
+    `&startDate=2026-03-01` +
+    `&endDate=${endDate}`;
+
+
+  try {
+
+    const data =
+      await getJSON(
+        url
+      );
+
+
+    let games = [];
+
+
+    for (
+      const date of
+      data.dates || []
+    ) {
+
+      games =
+        games.concat(
+          date.games || []
+        );
+
+    }
+
+
+    games =
+      games.filter(
+        game =>
+          game.status
+            ?.abstractGameState ===
+          "Final"
+      );
+
+
+    games.sort(
+      (a, b) =>
+        new Date(b.gameDate) -
+        new Date(a.gameDate)
+    );
+
+
+    teamAnalysisCache.set(
+      cacheKey,
+      games
+    );
+
+
+    return games;
+
+  }
+
+
+  catch(error) {
+
+    console.warn(
+      "球隊歷史賽程取得失敗",
+      teamId,
+      error
+    );
+
+
+    return [];
+
+  }
+
+}
+
+
+/* =========================================================
+   近況
+========================================================= */
+
+function calculateTeamForm(
+  games,
+  teamId
+) {
+
+  const last10 =
+    games.slice(
+      0,
+      10
+    );
+
+
+  let wins = 0;
+
+  let losses = 0;
+
+  let runsFor = 0;
+
+  let runsAgainst = 0;
+
+
+  last10.forEach(
+    game => {
+
+      const isAway =
+        game.teams.away.team.id ===
+        teamId;
+
+
+      const team =
+        isAway
+          ? game.teams.away
+          : game.teams.home;
+
+
+      const opponent =
+        isAway
+          ? game.teams.home
+          : game.teams.away;
+
+
+      const teamScore =
+        Number(
+          team.score ?? 0
+        );
+
+
+      const opponentScore =
+        Number(
+          opponent.score ?? 0
+        );
+
+
+      runsFor +=
+        teamScore;
+
+
+      runsAgainst +=
+        opponentScore;
+
+
+      if (
+        team.isWinner
+      ) {
+
+        wins++;
+
+      }
+
+      else {
+
+        losses++;
+
+      }
+
+    }
+  );
+
+
+  let streakType =
+    "";
+
+  let streakCount =
+    0;
+
+
+  if (
+    last10.length
+  ) {
+
+    const first =
+      last10[0];
+
+
+    const firstIsAway =
+      first.teams.away.team.id ===
+      teamId;
+
+
+    const firstTeam =
+      firstIsAway
+        ? first.teams.away
+        : first.teams.home;
+
+
+    const firstResult =
+      !!firstTeam.isWinner;
+
+
+    streakType =
+      firstResult
+        ? "W"
+        : "L";
+
+
+    for (
+      const game of last10
+    ) {
+
+      const isAway =
+        game.teams.away.team.id ===
+        teamId;
+
+
+      const team =
+        isAway
+          ? game.teams.away
+          : game.teams.home;
+
+
+      const result =
+        !!team.isWinner;
+
+
+      if (
+        result === firstResult
+      ) {
+
+        streakCount++;
+
+      }
+
+      else {
+
+        break;
+
+      }
+
+    }
+
+  }
+
+
+  return {
+
+    wins,
+
+    losses,
+
+    runsFor,
+
+    runsAgainst,
+
+    games:
+      last10.length,
+
+    streakType,
+
+    streakCount
+
+  };
+
+}
+
+
+/* =========================================================
+   主客場
+========================================================= */
+
+function calculateHomeAwayRecord(
+  games,
+  teamId,
+  location
+) {
+
+  const filtered =
+    games.filter(
+      game => {
+
+        const isHome =
+          game.teams.home.team.id ===
+          teamId;
+
+
+        const isAway =
+          game.teams.away.team.id ===
+          teamId;
+
+
+        if (
+          location ===
+          "home"
+        ) {
+
+          return isHome;
+
+        }
+
+
+        return isAway;
+
+      }
+    );
+
+
+  let wins = 0;
+
+  let losses = 0;
+
+
+  filtered.forEach(
+    game => {
+
+      const isAway =
+        game.teams.away.team.id ===
+        teamId;
+
+
+      const team =
+        isAway
+          ? game.teams.away
+          : game.teams.home;
+
+
+      if (
+        team.isWinner
+      ) {
+
+        wins++;
+
+      }
+
+      else {
+
+        losses++;
+
+      }
+
+    }
+  );
+
+
+  return {
+
+    wins,
+
+    losses
+
+  };
+
+}
+
+
+/* =========================================================
+   H2H
+========================================================= */
+
+function calculateH2H(
+  games,
+  teamId,
+  opponentId
+) {
+
+  const h2hGames =
+    games.filter(
+      game => {
+
+        const awayId =
+          game.teams.away.team.id;
+
+
+        const homeId =
+          game.teams.home.team.id;
+
+
+        return (
+
+          (
+            awayId === teamId &&
+            homeId === opponentId
+          )
+
+          ||
+
+          (
+            homeId === teamId &&
+            awayId === opponentId
+          )
+
+        );
+
+      }
+    );
+
+
+  let wins = 0;
+
+  let losses = 0;
+
+  let runsFor = 0;
+
+  let runsAgainst = 0;
+
+
+  h2hGames.forEach(
+    game => {
+
+      const isAway =
+        game.teams.away.team.id ===
+        teamId;
+
+
+      const team =
+        isAway
+          ? game.teams.away
+          : game.teams.home;
+
+
+      const opponent =
+        isAway
+          ? game.teams.home
+          : game.teams.away;
+
+
+      const teamScore =
+        Number(
+          team.score ?? 0
+        );
+
+
+      const opponentScore =
+        Number(
+          opponent.score ?? 0
+        );
+
+
+      runsFor +=
+        teamScore;
+
+
+      runsAgainst +=
+        opponentScore;
+
+
+      if (
+        team.isWinner
+      ) {
+
+        wins++;
+
+      }
+
+      else {
+
+        losses++;
+
+      }
+
+    }
+  );
+
+
+  return {
+
+    wins,
+
+    losses,
+
+    runsFor,
+
+    runsAgainst,
+
+    games:
+      h2hGames.length
+
+  };
+
+}
+
+
+/* =========================================================
+   完整 Team Analysis
+========================================================= */
+
+async function getTeamAnalysisData(
+  teamId,
+  opponentId
+) {
+
+  const [
+    hitting,
+    standingsMap,
+    games
+  ] = await Promise.all([
+
+    getTeamHittingStats(
+      teamId
+    ),
+
+    getAllStandings(),
+
+    getTeamSchedule(
+      teamId
+    )
+
+  ]);
+
+
+  const record =
+    standingsMap.get(
+      Number(teamId)
+    ) ||
+    standingsMap.get(
+      teamId
+    ) ||
+    {};
+
+
+  const form =
+    calculateTeamForm(
+      games,
+      teamId
+    );
+
+
+  const homeRecord =
+    calculateHomeAwayRecord(
+      games,
+      teamId,
+      "home"
+    );
+
+
+  const awayRecord =
+    calculateHomeAwayRecord(
+      games,
+      teamId,
+      "away"
+    );
+
+
+  const h2h =
+    calculateH2H(
+      games,
+      teamId,
+      opponentId
+    );
+
+
+  const wins =
+    Number(
+      record.wins ?? 0
+    );
+
+
+  const losses =
+    Number(
+      record.losses ?? 0
+    );
+
+
+  const runsScored =
+    Number(
+      record.runsScored ?? 0
+    );
+
+
+  const runsAllowed =
+    Number(
+      record.runsAllowed ?? 0
+    );
+
+
+  const gamesPlayed =
+    wins + losses;
+
+
+  return {
+
+    teamId,
+
+    hitting,
+
+    record: {
+
+      wins,
+
+      losses,
+
+      runsScored,
+
+      runsAllowed,
+
+      gamesPlayed
+
+    },
+
+    homeRecord,
+
+    awayRecord,
+
+    form,
+
+    h2h
+
+  };
+
+}
+
+
+/* =========================================================
+   格式化
+========================================================= */
+
+function statValue(
+  value
+) {
+
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+
+    return "—";
+
+  }
+
+
+  return value;
+
+}
+
+
+function average(
+  total,
+  games
+) {
+
+  if (
+    !games
+  ) {
+
+    return "—";
+
+  }
+
+
+  return (
+    Number(total) /
+    Number(games)
+  ).toFixed(1);
+
+}
+
+
+/* =========================================================
+   渲染 Team Analysis
+========================================================= */
+
+function renderTeamAnalysis(
+  card,
+  awayData,
+  homeData
+) {
+
+  if (
+    !awayData ||
+    !homeData
+  ) {
+
+    return;
+
+  }
+
+
+  /*
+   * ===============================
+   * 2026 戰績
+   * ===============================
+   */
+
+  const awayRecord =
+    `${awayData.record.wins}-${awayData.record.losses}`;
+
+
+  const homeRecord =
+    `${homeData.record.wins}-${homeData.record.losses}`;
+
+
+  card
+    .querySelector(
+      ".away-season-record"
+    )
+    .textContent =
+      awayRecord;
+
+
+  card
+    .querySelector(
+      ".home-season-record"
+    )
+    .textContent =
+      homeRecord;
+
+
+  /*
+   * ===============================
+   * 主 / 客
+   * ===============================
+   */
+
+  card
+    .querySelector(
+      ".away-home-away"
+    )
+    .textContent =
+      `客 ${awayData.awayRecord.wins}-${awayData.awayRecord.losses}`;
+
+
+  card
+    .querySelector(
+      ".home-home-away"
+    )
+    .textContent =
+      `主 ${homeData.homeRecord.wins}-${homeData.homeRecord.losses}`;
+
+
+  /*
+   * ===============================
+   * Last 10
+   * ===============================
+   */
+
+  card
+    .querySelector(
+      ".away-last10"
+    )
+    .textContent =
+      `${awayData.form.wins}-${awayData.form.losses}`;
+
+
+  card
+    .querySelector(
+      ".home-last10"
+    )
+    .textContent =
+      `${homeData.form.wins}-${homeData.form.losses}`;
+
+
+  /*
+   * ===============================
+   * Streak
+   * ===============================
+   */
+
+  const awayStreak =
+    awayData.form.streakCount
+      ? `${awayData.form.streakCount}${
+          awayData.form.streakType === "W"
+            ? "連勝"
+            : "連敗"
+        }`
+      : "—";
+
+
+  const homeStreak =
+    homeData.form.streakCount
+      ? `${homeData.form.streakCount}${
+          homeData.form.streakType === "W"
+            ? "連勝"
+            : "連敗"
+        }`
+      : "—";
+
+
+  card
+    .querySelector(
+      ".away-streak"
+    )
+    .textContent =
+      awayStreak;
+
+
+  card
+    .querySelector(
+      ".home-streak"
+    )
+    .textContent =
+      homeStreak;
+
+
+  /*
+   * ===============================
+   * H2H
+   * ===============================
+   */
+
+  card
+    .querySelector(
+      ".away-h2h"
+    )
+    .textContent =
+      `${awayData.h2h.wins}-${awayData.h2h.losses}`;
+
+
+  card
+    .querySelector(
+      ".home-h2h"
+    )
+    .textContent =
+      `${homeData.h2h.wins}-${homeData.h2h.losses}`;
+
+
+  /*
+   * ===============================
+   * 打擊
+   * ===============================
+   */
+
+  const awayHitting =
+    awayData.hitting ||
+    {};
+
+
+  const homeHitting =
+    homeData.hitting ||
+    {};
+
+
+  card
+    .querySelector(
+      ".away-avg"
+    )
+    .textContent =
+      statValue(
+        awayHitting.avg
+      );
+
+
+  card
+    .querySelector(
+      ".home-avg"
+    )
+    .textContent =
+      statValue(
+        homeHitting.avg
+      );
+
+
+  card
+    .querySelector(
+      ".away-obp"
+    )
+    .textContent =
+      statValue(
+        awayHitting.obp
+      );
+
+
+  card
+    .querySelector(
+      ".home-obp"
+    )
+    .textContent =
+      statValue(
+        homeHitting.obp
+      );
+
+
+  card
+    .querySelector(
+      ".away-slg"
+    )
+    .textContent =
+      statValue(
+        awayHitting.slg
+      );
+
+
+  card
+    .querySelector(
+      ".home-slg"
+    )
+    .textContent =
+      statValue(
+        homeHitting.slg
+      );
+
+
+  card
+    .querySelector(
+      ".away-ops"
+    )
+    .textContent =
+      statValue(
+        awayHitting.ops
+      );
+
+
+  card
+    .querySelector(
+      ".home-ops"
+    )
+    .textContent =
+      statValue(
+        homeHitting.ops
+      );
+
+
+  /*
+   * ===============================
+   * 平均得 / 失分
+   * ===============================
+   */
+
+  const awayRuns =
+    average(
+      awayData.record.runsScored,
+      awayData.record.gamesPlayed
+    );
+
+
+  const awayAllowed =
+    average(
+      awayData.record.runsAllowed,
+      awayData.record.gamesPlayed
+    );
+
+
+  const homeRuns =
+    average(
+      homeData.record.runsScored,
+      homeData.record.gamesPlayed
+    );
+
+
+  const homeAllowed =
+    average(
+      homeData.record.runsAllowed,
+      homeData.record.gamesPlayed
+    );
+
+
+  card
+    .querySelector(
+      ".away-runs"
+    )
+    .textContent =
+      `${awayRuns} / ${awayAllowed}`;
+
+
+  card
+    .querySelector(
+      ".home-runs"
+    )
+    .textContent =
+      `${homeRuns} / ${homeAllowed}`;
+
+
+  /*
+   * ===============================
+   * 近10得 / 失分
+   * ===============================
+   */
+
+  const awayRecentRuns =
+    average(
+      awayData.form.runsFor,
+      awayData.form.games
+    );
+
+
+  const awayRecentAllowed =
+    average(
+      awayData.form.runsAgainst,
+      awayData.form.games
+    );
+
+
+  const homeRecentRuns =
+    average(
+      homeData.form.runsFor,
+      homeData.form.games
+    );
+
+
+  const homeRecentAllowed =
+    average(
+      homeData.form.runsAgainst,
+      homeData.form.games
+    );
+
+
+  card
+    .querySelector(
+      ".away-last10-runs"
+    )
+    .textContent =
+      `${awayRecentRuns} / ${awayRecentAllowed}`;
+
+
+  card
+    .querySelector(
+      ".home-last10-runs"
+    )
+    .textContent =
+      `${homeRecentRuns} / ${homeRecentAllowed}`;
+
+
+  /*
+   * 載入完成
+   */
+
+  const loading =
+    card.querySelector(
+      ".team-data-loading"
+    );
+
+
+  if (loading) {
+
+    loading.remove();
+
+  }
 
 }
 
@@ -1570,11 +2746,13 @@ async function createGameCard(
 
 
   const gameData =
-    feed?.gameData || {};
+    feed?.gameData ||
+    {};
 
 
   const liveData =
-    feed?.liveData || {};
+    feed?.liveData ||
+    {};
 
 
   const away =
@@ -1586,7 +2764,8 @@ async function createGameCard(
 
 
   const status =
-    game.status?.abstractGameState ||
+    game.status
+      ?.abstractGameState ||
     "Preview";
 
 
@@ -1596,10 +2775,6 @@ async function createGameCard(
     );
 
 
-  /*
-   * 台灣時間
-   */
-
   const taiwanTime =
     getTaiwanTime(
       game.gameDate
@@ -1607,7 +2782,7 @@ async function createGameCard(
 
 
   /*
-   * 先發投手
+   * 先發
    */
 
   const awayPitcher =
@@ -1653,10 +2828,6 @@ async function createGameCard(
   }
 
 
-  /*
-   * 局數
-   */
-
   const inningText =
     getInningText(
       liveData.linescore,
@@ -1678,24 +2849,11 @@ async function createGameCard(
     "game-card";
 
 
-  /*
-   * gamePk 綁定
-   */
-
   card.setAttribute(
     "data-game-id",
     game.gamePk
   );
 
-
-  /*
-   * PlaySport Game ID
-   *
-   * 20260913 + 比賽序號
-   *
-   * MLB gamePk 與 PlaySport gameid
-   * 不一定相同，因此目前只作顯示用途。
-   */
 
   card.setAttribute(
     "data-mlb-game-id",
@@ -1705,9 +2863,9 @@ async function createGameCard(
 
   card.innerHTML = `
 
-    <!-- ======================
+    <!-- =================================
          GAME HEADER
-    ======================= -->
+    ================================== -->
 
     <div class="game-top">
 
@@ -1734,14 +2892,12 @@ async function createGameCard(
     </div>
 
 
-    <!-- ======================
+    <!-- =================================
          TEAMS
-    ======================= -->
+    ================================== -->
 
     <div class="teams">
 
-
-      <!-- 客隊 -->
 
       <div class="team away">
 
@@ -1767,24 +2923,18 @@ async function createGameCard(
       </div>
 
 
-      <!-- 比分 -->
-
       <div>
 
         <div class="score">
           ${score}
         </div>
 
-        <div
-          class="inning-status"
-        >
+        <div class="inning-status">
           ${inningText}
         </div>
 
       </div>
 
-
-      <!-- 主隊 -->
 
       <div class="team home">
 
@@ -1809,16 +2959,14 @@ async function createGameCard(
 
       </div>
 
-
     </div>
 
 
-    <!-- ======================
+    <!-- =================================
          PITCHER
-    ======================= -->
+    ================================== -->
 
     <div class="pitcher">
-
 
       <div class="pitcher-box">
 
@@ -1845,17 +2993,15 @@ async function createGameCard(
 
       </div>
 
-
     </div>
 
 
-    <!-- ======================
-         LIVE INFO
-    ======================= -->
+    <!-- =================================
+         LIVE
+    ================================== -->
 
     ${
       status === "Live"
-
       ?
 
       `
@@ -1876,9 +3022,7 @@ async function createGameCard(
               局數
             </div>
 
-            <div
-              class="live-value live-inning"
-            >
+            <div class="live-value live-inning">
               ${inningText || "-"}
             </div>
 
@@ -1891,9 +3035,7 @@ async function createGameCard(
               出局
             </div>
 
-            <div
-              class="live-value live-outs"
-            >
+            <div class="live-value live-outs">
               ${
                 liveData
                   .linescore
@@ -1910,9 +3052,7 @@ async function createGameCard(
               球數
             </div>
 
-            <div
-              class="live-value live-count"
-            >
+            <div class="live-value live-count">
               ${getCount(
                 liveData
               )}
@@ -1927,9 +3067,7 @@ async function createGameCard(
               狀態
             </div>
 
-            <div
-              class="live-value live-state"
-            >
+            <div class="live-value live-state">
               LIVE
             </div>
 
@@ -1949,14 +3087,19 @@ async function createGameCard(
     }
 
 
-    <!-- ======================
+    <!-- =================================
          團隊資料
-    ======================= -->
+    ================================== -->
 
     <div class="data-section">
 
       <div class="data-title">
         📊 團隊資料
+      </div>
+
+
+      <div class="team-data-loading">
+        正在取得 2026 球隊資料...
       </div>
 
 
@@ -1992,12 +3135,12 @@ async function createGameCard(
               2026 戰績
             </td>
 
-            <td>
-              待接入
+            <td class="away-season-record">
+              載入中
             </td>
 
-            <td>
-              待接入
+            <td class="home-season-record">
+              載入中
             </td>
 
           </tr>
@@ -2009,12 +3152,12 @@ async function createGameCard(
               主 / 客戰績
             </td>
 
-            <td>
-              待接入
+            <td class="away-home-away">
+              載入中
             </td>
 
-            <td>
-              待接入
+            <td class="home-home-away">
+              載入中
             </td>
 
           </tr>
@@ -2026,12 +3169,29 @@ async function createGameCard(
               近10場
             </td>
 
-            <td>
-              待接入
+            <td class="away-last10">
+              載入中
             </td>
 
+            <td class="home-last10">
+              載入中
+            </td>
+
+          </tr>
+
+
+          <tr>
+
             <td>
-              待接入
+              連勝 / 連敗
+            </td>
+
+            <td class="away-streak">
+              載入中
+            </td>
+
+            <td class="home-streak">
+              載入中
             </td>
 
           </tr>
@@ -2043,12 +3203,12 @@ async function createGameCard(
               H2H
             </td>
 
-            <td>
-              待接入
+            <td class="away-h2h">
+              載入中
             </td>
 
-            <td>
-              待接入
+            <td class="home-h2h">
+              載入中
             </td>
 
           </tr>
@@ -2060,12 +3220,46 @@ async function createGameCard(
               AVG
             </td>
 
-            <td>
-              待接入
+            <td class="away-avg">
+              載入中
             </td>
 
+            <td class="home-avg">
+              載入中
+            </td>
+
+          </tr>
+
+
+          <tr>
+
             <td>
-              待接入
+              OBP
+            </td>
+
+            <td class="away-obp">
+              載入中
+            </td>
+
+            <td class="home-obp">
+              載入中
+            </td>
+
+          </tr>
+
+
+          <tr>
+
+            <td>
+              SLG
+            </td>
+
+            <td class="away-slg">
+              載入中
+            </td>
+
+            <td class="home-slg">
+              載入中
             </td>
 
           </tr>
@@ -2077,12 +3271,12 @@ async function createGameCard(
               OPS
             </td>
 
-            <td>
-              待接入
+            <td class="away-ops">
+              載入中
             </td>
 
-            <td>
-              待接入
+            <td class="home-ops">
+              載入中
             </td>
 
           </tr>
@@ -2094,12 +3288,29 @@ async function createGameCard(
               平均得 / 失分
             </td>
 
-            <td>
-              待接入
+            <td class="away-runs">
+              載入中
             </td>
 
+            <td class="home-runs">
+              載入中
+            </td>
+
+          </tr>
+
+
+          <tr>
+
             <td>
-              待接入
+              近10得 / 失分
+            </td>
+
+            <td class="away-last10-runs">
+              載入中
+            </td>
+
+            <td class="home-last10-runs">
+              載入中
             </td>
 
           </tr>
@@ -2112,9 +3323,9 @@ async function createGameCard(
     </div>
 
 
-    <!-- ======================
+    <!-- =================================
          市場資料
-    ======================= -->
+    ================================== -->
 
     <div class="data-section">
 
@@ -2147,7 +3358,6 @@ async function createGameCard(
 
 
         <tbody>
-
 
           <tr>
 
@@ -2220,9 +3430,9 @@ async function createGameCard(
     </div>
 
 
-    <!-- ======================
+    <!-- =================================
          ANALYSIS
-    ======================= -->
+    ================================== -->
 
     <div class="analysis">
 
@@ -2262,44 +3472,50 @@ async function createGameCard(
 
           ✔ 台灣時間<br>
 
-          ${awayPitcher ? "✔" : "✖"}
+          ${
+            awayPitcher
+              ? "✔"
+              : "✖"
+          }
           客隊先發<br>
 
-          ${homePitcher ? "✔" : "✖"}
+          ${
+            homePitcher
+              ? "✔"
+              : "✖"
+          }
           主隊先發<br><br>
 
           <strong>
           PlaySport 日期：
-          ${dateToPlaySport(selectedDate)}
+          ${dateToPlaySport(
+            selectedDate
+          )}
           </strong>
 
-          <br>
+          <br><br>
 
-          下一階段會把 PlaySport
-          的戰績、近10場、H2H、
-          投手、團隊打擊、讓分及大小分
-          接進來。
+          團隊資料正在自動計算：
+          2026 戰績、主客場、近10、
+          H2H、打擊數據及得失分。
+
           `
-
 
           :
 
           status === "Live"
 
-
           ?
-
 
           `
           比賽目前進行中。<br><br>
 
           🔴 即時比分與局數
           每 15 秒自動更新。
+
           `
 
-
           :
-
 
           `
           比賽已結束。<br><br>
@@ -2317,21 +3533,79 @@ async function createGameCard(
   `;
 
 
+  /*
+   * =====================================
+   * 取得團隊分析資料
+   * =====================================
+   */
+
+  try {
+
+    const [
+      awayTeamData,
+      homeTeamData
+    ] = await Promise.all([
+
+      getTeamAnalysisData(
+        away.team.id,
+        home.team.id
+      ),
+
+      getTeamAnalysisData(
+        home.team.id,
+        away.team.id
+      )
+
+    ]);
+
+
+    renderTeamAnalysis(
+      card,
+      awayTeamData,
+      homeTeamData
+    );
+
+  }
+
+
+  catch(error) {
+
+    console.warn(
+      "團隊資料載入失敗",
+      game.gamePk,
+      error
+    );
+
+
+    const loading =
+      card.querySelector(
+        ".team-data-loading"
+      );
+
+
+    if (loading) {
+
+      loading.textContent =
+        "團隊資料暫時無法取得";
+
+      loading.className =
+        "data-error";
+
+    }
+
+  }
+
+
   return card;
 
 }
 
 
 /* =========================================================
-   即時更新比分
+   即時比分更新
 ========================================================= */
 
 async function refreshLiveScores() {
-
-  /*
-   * 如果沒有頁面，
-   * 不執行
-   */
 
   if (
     !document.querySelector(
@@ -2344,31 +3618,19 @@ async function refreshLiveScores() {
   }
 
 
-  /*
-   * 記錄目前日期版本
-   */
-
   const currentVersion =
     pageVersion;
 
 
   try {
 
-    /*
-     * 重新取得「目前 PlaySport 日期」
-     * 對應的 MLB 日期
-     */
-
     const games =
       await getMLBSchedule();
 
 
-    /*
-     * 防止使用者已切日期
-     */
-
     if (
-      currentVersion !== pageVersion
+      currentVersion !==
+      pageVersion
     ) {
 
       return;
@@ -2376,30 +3638,18 @@ async function refreshLiveScores() {
     }
 
 
-    /*
-     * 更新統計
-     */
-
     updateSummary(
       games
     );
 
 
-    /*
-     * 更新每場
-     */
-
     for (
       const game of games
     ) {
 
-      /*
-       * 如果使用者中途切換日期，
-       * 立即停止
-       */
-
       if (
-        currentVersion !== pageVersion
+        currentVersion !==
+        pageVersion
       ) {
 
         return;
@@ -2420,16 +3670,15 @@ async function refreshLiveScores() {
       }
 
 
+      const state =
+        game.status
+          ?.abstractGameState;
+
+
       /*
        * 只有 LIVE / FINAL
-       * 才需要抓 feed
-       *
-       * 尚未開打不用一直抓
+       * 需要即時 Feed
        */
-
-      const state =
-        game.status?.abstractGameState;
-
 
       if (
         state !== "Live" &&
@@ -2489,7 +3738,7 @@ async function refreshLiveScores() {
 
 
 /* =========================================================
-   更新單場 LIVE
+   更新 LIVE 卡片
 ========================================================= */
 
 function updateGameCardLive(
@@ -2507,13 +3756,12 @@ function updateGameCardLive(
 
 
   const status =
-    game.status?.abstractGameState;
+    game.status
+      ?.abstractGameState;
 
 
   /*
-   * =========================
    * 比分
-   * =========================
    */
 
   const scoreElement =
@@ -2545,9 +3793,7 @@ function updateGameCardLive(
 
 
   /*
-   * =========================
    * 狀態
-   * =========================
    */
 
   const statusElement =
@@ -2575,9 +3821,7 @@ function updateGameCardLive(
 
 
   /*
-   * =========================
    * 局數
-   * =========================
    */
 
   const linescore =
@@ -2606,9 +3850,7 @@ function updateGameCardLive(
 
 
   /*
-   * =========================
    * LIVE 局數
-   * =========================
    */
 
   const liveInning =
@@ -2626,9 +3868,7 @@ function updateGameCardLive(
 
 
   /*
-   * =========================
    * OUTS
-   * =========================
    */
 
   const liveOuts =
@@ -2646,9 +3886,7 @@ function updateGameCardLive(
 
 
   /*
-   * =========================
    * 球數
-   * =========================
    */
 
   const liveCount =
@@ -2668,15 +3906,7 @@ function updateGameCardLive(
 
 
   /*
-   * =========================
    * LIVE → FINAL
-   * =========================
-   *
-   * 如果原本是 LIVE，
-   * 結束後要顯示比賽結束。
-   *
-   * 不重新整張卡片，
-   * 只更新必要內容。
    */
 
   if (
@@ -2702,14 +3932,10 @@ function updateGameCardLive(
 
 
 /* =========================================================
-   啟動即時更新
+   啟動 LIVE Refresh
 ========================================================= */
 
 function startLiveRefresh() {
-
-  /*
-   * 先清除舊 Timer
-   */
 
   if (liveUpdateTimer) {
 
@@ -2719,10 +3945,6 @@ function startLiveRefresh() {
 
   }
 
-
-  /*
-   * 每 15 秒更新
-   */
 
   liveUpdateTimer =
     setInterval(
@@ -2747,6 +3969,7 @@ function updateRefreshTime() {
     new Intl.DateTimeFormat(
       "zh-TW",
       {
+
         timeZone:
           "Asia/Taipei",
 
@@ -2761,6 +3984,7 @@ function updateRefreshTime() {
 
         hour12:
           false
+
       }
     )
     .format(now);
@@ -2866,4 +4090,3 @@ loadMLBGames();
 </body>
 
 </html>
-```
