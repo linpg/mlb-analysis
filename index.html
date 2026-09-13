@@ -157,23 +157,18 @@ function getTeamLogo(teamId) {
   return `https://mlb.com{teamId}.svg`;
 }
 
-// 根據球隊戰力、歷史數據與盤口口水，精準模擬運彩與 PlaySport 預測邏輯
 function calculateSmartOddsAndAnalysis(awayName, homeName, awayWins, awayLosses, homeWins, homeLosses) {
   const awayWinRate = awayWins + awayLosses > 0 ? awayWins / (awayWins + awayLosses) : 0.5;
-  const homeWinRate = homeWins + homeLosses > 0 ? homeWins / (homeWins + homeLosses) : 0.53; // 考慮主場優勢基礎值
+  const homeWinRate = homeWins + homeLosses > 0 ? homeWins / (homeWins + homeLosses) : 0.53; 
   
-  // 計算基本實力差 (包含主場權重加權 8%)
   const powerDiff = (homeWinRate + 0.08) - awayWinRate;
   
-  // 1. 模擬台灣運彩不讓分賠率 (精算抽水率後的台彩獨贏盤)
   let homeML = 1.75 - (powerDiff * 1.5);
   let awayML = 1.95 + (powerDiff * 1.5);
   
-  // 風險邊界控制
   homeML = Math.max(1.30, Math.min(2.45, homeML)).toFixed(2);
   awayML = Math.max(1.30, Math.min(2.45, awayML)).toFixed(2);
   
-  // 2. 模擬讓分盤 (Handicap) 基準線
   let spreadValue = "-1.5";
   let homeSpreadOdd = "1.95";
   let awaySpreadOdd = "1.55";
@@ -183,11 +178,16 @@ function calculateSmartOddsAndAnalysis(awayName, homeName, awayWins, awayLosses,
     awaySpreadOdd = "2.05";
   }
   
-  // 3. 模擬總分大小盤 (基於大聯盟平均分分佈預估)
   const totalBase = (7.5 + Math.random() * 2).toFixed(1);
   const bigOdd = "1.75";
   const smallOdd = "1.75";
   
-  // 4. PlaySport 莊家殺手推估模型 (計算預估最大勝率勝出方)
   let recommendedTeam = homeName;
   let rawConfidence = 50 + (Math.abs(powerDiff) * 100);
+  if (powerDiff < 0) {
+    recommendedTeam = awayName;
+  }
+  rawConfidence += (Math.random() * 6 - 3);
+  const playSportConfidence = Math.max(52, Math.min(78, rawConfidence)).toFixed(1);
+
+  let textAnalysis = "";
