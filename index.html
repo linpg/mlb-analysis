@@ -1,185 +1,731 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MLB 大數據分析中心 - 時區校正版</title>
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>MLB 分析中心</title>
+
 <style>
-* { box-sizing: border-box; }
-body { margin: 0; background: #f4f5f7; color: #222; font-family: Arial, "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
-header { background: #0b1e36; color: white; padding: 20px; border-bottom: 4px solid #b3a05d; }
-.header-inner { max-width: 1250px; margin: auto; }
-h1 { margin: 0; font-size: 26px; display: flex; align-items: center; gap: 10px; }
-.subtitle { margin-top: 6px; color: #cbd5e1; font-size: 13px; }
-.container { max-width: 1250px; margin: auto; padding: 15px; }
 
-/* DATE BAR */
-.date-bar { background: white; border-radius: 8px; padding: 14px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-.date-buttons { display: flex; gap: 6px; }
-.date-buttons button, .date-bar input[type="date"] { border: 1px solid #cbd5e1; background: white; padding: 9px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
-.date-buttons button:hover { background: #f1f5f9; }
-.date-buttons .active { background: #0b1e36; color: white; font-weight: bold; border-color: #0b1e36; }
-.date-current { font-weight: bold; color: #0b1e36; }
-
-/* SUMMARY */
-.summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
-.summary-box { background: white; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-.summary-title { font-size: 12px; color: #64748b; }
-.summary-value { font-size: 23px; font-weight: bold; margin-top: 4px; }
-
-/* GAME CARD */
-.game-card { background: white; margin-bottom: 20px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-.game-top { padding: 12px 18px; border-bottom: 1px solid #edf2f7; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-.game-time { font-weight: bold; font-size: 17px; color: #b91c1c; }
-.game-date-small { color: #64748b; font-size: 11px; margin-top: 3px; }
-.game-status { font-size: 12px; padding: 5px 10px; border-radius: 20px; background: #e2e8f0; font-weight: bold; }
-.status-preview { background: #edf5ff; color: #1e40af; }
-.status-live { background: #fee2e2; color: #991b1b; animation: pulse 2s infinite; }
-.status-final { background: #dcfce7; color: #166534; }
-
-/* TEAMS */
-.teams { display: grid; grid-template-columns: 1fr 140px 1fr; align-items: center; padding: 20px; gap: 15px; }
-.team { display: flex; align-items: center; gap: 15px; }
-.team.away { justify-content: flex-end; text-align: right; }
-.team.home { justify-content: flex-start; }
-.logo { width: 55px; height: 55px; object-fit: contain; background: #f8fafc; border-radius: 50%; padding: 6px; border: 1px solid #e2e8f0; }
-.team-name { font-size: 19px; font-weight: bold; color: #1e293b; }
-.team-side { color: #64748b; font-size: 12px; margin-top: 3px; }
-.score { text-align: center; font-size: 32px; font-weight: 800; color: #0b1e36; letter-spacing: 2px; }
-.inning-status { text-align: center; color: #b91c1c; font-size: 12px; margin-top: 6px; min-height: 16px; font-weight: bold; }
-
-/* ODD SECTION */
-.odds-section { background: #fafafa; border-top: 1px solid #edf2f7; padding: 15px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.odd-box { background: white; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; text-align: center; }
-.odd-title { font-size: 12px; color: #e11d48; font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.odd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 13px; }
-.odd-item { background: #f8fafc; padding: 6px 4px; border-radius: 4px; }
-.odd-label { color: #64748b; font-size: 11px; }
-.odd-val { font-weight: bold; color: #0f172a; margin-top: 2px; }
-
-/* PITCHER BOX */
-.pitcher { border-top: 1px solid #edf2f7; padding: 15px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #ffffff; }
-.pitcher-box { background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #edf2f7; }
-.pitcher-title { font-size: 12px; color: #64748b; font-weight: bold; }
-.pitcher-name { margin-top: 6px; font-weight: bold; color: #0f172a; font-size: 14px; }
-.pitcher-stats { margin-top: 8px; border-top: 1px dashed #e2e8f0; padding-top: 8px; }
-.pitcher-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.pitcher-stat-item { background: white; border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 2px; text-align: center; }
-.pitcher-stat-label { font-size: 10px; color: #94a3b8; }
-.pitcher-stat-value { font-size: 12px; font-weight: bold; color: #334155; }
-
-/* ANALYSIS */
-.analysis-wrapper { display: grid; grid-template-columns: 160px 1fr; gap: 15px; background: #f0f7ff; border-left: 5px solid #2563eb; padding: 15px; margin: 0 18px 18px; border-radius: 0 8px 8px 0; }
-.win-rate-box { background: white; border: 1px solid #bfdbfe; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
-.win-rate-title { font-size: 11px; color: #1e40af; font-weight: bold; }
-.win-rate-num { font-size: 24px; font-weight: 900; color: #1d4ed8; margin-top: 4px; }
-.win-rate-team { font-size: 11px; color: #64748b; margin-top: 2px; font-weight: bold; }
-.analysis-content { display: flex; flex-direction: column; justify-content: center; }
-.analysis-title { font-weight: bold; color: #1e3a8a; font-size: 14px; margin-bottom: 4px; }
-.analysis-text { font-size: 13px; line-height: 1.6; color: #334155; }
-
-/* UTILS */
-.loading, .empty, .error { background: white; padding: 40px; text-align: center; border-radius: 12px; font-size: 16px; color: #64748b; margin-top: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-.error { color: #991b1b; border-left: 4px solid #ef4444; }
-.refresh-info { text-align: center; color: #94a3b8; font-size: 11px; margin: 25px 0; }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+* {
+  box-sizing: border-box;
 }
 
-@media(max-width: 850px) {
-  .summary { grid-template-columns: repeat(2, 1fr); }
-  .teams { grid-template-columns: 1fr; text-align: center; }
-  .team.away, .team.home { justify-content: center; text-align: center; }
-  .score { order: 3; margin: 10px 0; }
-  .odds-section { grid-template-columns: 1fr; }
-  .pitcher { grid-template-columns: 1fr; }
-  .analysis-wrapper { grid-template-columns: 1fr; text-align: center; }
+body {
+  margin: 0;
+  background: #f4f5f7;
+  color: #222;
+  font-family:
+    Arial,
+    "Microsoft JhengHei",
+    "Noto Sans TC",
+    sans-serif;
 }
+
+
+/* ========================================
+   HEADER
+======================================== */
+
+header {
+  background: #111;
+  color: white;
+  padding: 18px;
+}
+
+.header-inner {
+  max-width: 1250px;
+  margin: auto;
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.subtitle {
+  margin-top: 6px;
+  color: #aaa;
+  font-size: 13px;
+}
+
+
+/* ========================================
+   CONTAINER
+======================================== */
+
+.container {
+  max-width: 1250px;
+  margin: auto;
+  padding: 15px;
+}
+
+
+/* ========================================
+   DATE BAR
+======================================== */
+
+.date-bar {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 15px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.date-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.date-buttons button {
+  border: 1px solid #ddd;
+  background: white;
+
+  padding: 9px 14px;
+
+  border-radius: 5px;
+
+  cursor: pointer;
+
+  font-size: 14px;
+}
+
+.date-buttons button:hover {
+  background: #eee;
+}
+
+.date-buttons .today, .date-buttons .active {
+  background: #111;
+  color: white;
+  font-weight: bold;
+}
+
+.date-current {
+  font-weight: bold;
+}
+
+
+/* ========================================
+   SUMMARY
+======================================== */
+
+.summary {
+  display: grid;
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 10px;
+
+  margin-bottom: 15px;
+}
+
+.summary-box {
+  background: white;
+
+  padding: 14px;
+
+  border-radius: 8px;
+}
+
+.summary-title {
+  font-size: 12px;
+  color: #888;
+}
+
+.summary-value {
+  font-size: 23px;
+  font-weight: bold;
+
+  margin-top: 4px;
+}
+
+
+/* ========================================
+   GAME CARD
+======================================== */
+
+.game-card {
+  background: white;
+
+  margin-bottom: 15px;
+
+  border-radius: 9px;
+
+  overflow: hidden;
+
+  border: 1px solid #ddd;
+}
+
+
+/* ========================================
+   GAME HEADER
+======================================== */
+
+.game-top {
+  padding: 11px 15px;
+
+  border-bottom: 1px solid #eee;
+
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+}
+
+.game-time {
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.game-date-small {
+  color: #888;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.game-status {
+  font-size: 12px;
+
+  padding: 5px 9px;
+
+  border-radius: 4px;
+
+  background: #eee;
+}
+
+.status-preview {
+  background: #e8f1ff;
+  color: #1455b8;
+}
+
+.status-live {
+  background: #ffe4e4;
+  color: #c40000;
+
+  font-weight: bold;
+}
+
+.status-final {
+  background: #e4f7e9;
+  color: #147333;
+}
+
+
+/* ========================================
+   TEAMS
+======================================== */
+
+.teams {
+  display: grid;
+
+  grid-template-columns:
+    1fr 100px 1fr;
+
+  align-items: center;
+
+  padding: 18px;
+
+  gap: 10px;
+}
+
+.team {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+}
+
+.team.away {
+  justify-content: flex-end;
+
+  text-align: right;
+}
+
+.team.home {
+  justify-content: flex-start;
+}
+
+.logo {
+  width: 58px;
+  height: 58px;
+
+  object-fit: contain;
+}
+
+.team-name {
+  font-size: 18px;
+
+  font-weight: bold;
+}
+
+.team-side {
+  color: #888;
+
+  font-size: 11px;
+
+  margin-top: 3px;
+}
+
+.score {
+  text-align: center;
+
+  font-size: 26px;
+
+  font-weight: bold;
+}
+
+.inning-status {
+  text-align: center;
+
+  color: #c40000;
+
+  font-size: 12px;
+
+  margin-top: 4px;
+
+  min-height: 16px;
+}
+
+
+/* ========================================
+   PITCHER
+======================================== */
+
+.pitcher {
+  border-top: 1px solid #eee;
+
+  padding: 12px 18px;
+
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 15px;
+}
+
+.pitcher-box {
+  background: #fafafa;
+
+  padding: 10px;
+
+  border-radius: 5px;
+}
+
+.pitcher-title {
+  font-size: 12px;
+
+  color: #888;
+}
+
+.pitcher-name {
+  margin-top: 4px;
+
+  font-weight: bold;
+}
+
+.pitcher-hand {
+  margin-top: 4px;
+
+  font-size: 11px;
+
+  color: #777;
+}
+
+.pitcher-stats {
+  margin-top: 10px;
+
+  border-top: 1px solid #eee;
+
+  padding-top: 8px;
+}
+
+.pitcher-stats-title {
+  font-size: 11px;
+
+  color: #888;
+
+  margin-bottom: 6px;
+}
+
+.pitcher-stat-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(5, 1fr);
+
+  gap: 5px;
+}
+
+.pitcher-stat-item {
+  background: white;
+
+  border: 1px solid #eee;
+
+  border-radius: 4px;
+
+  padding: 5px 3px;
+
+  text-align: center;
+}
+
+.pitcher-stat-label {
+  font-size: 9px;
+
+  color: #999;
+}
+
+.pitcher-stat-value {
+  font-size: 12px;
+
+  font-weight: bold;
+
+  margin-top: 2px;
+}
+
+.pitcher-recent {
+  margin-top: 7px;
+
+  padding: 6px;
+
+  background: white;
+
+  border-radius: 4px;
+
+  font-size: 11px;
+
+  color: #555;
+}
+
+
+/* ========================================
+   DATA SECTION
+======================================== */
+
+.data-section {
+  border-top: 1px solid #eee;
+
+  padding: 15px;
+}
+
+.data-title {
+  font-size: 16px;
+
+  font-weight: bold;
+
+  margin-bottom: 8px;
+}
+
+.data-table {
+  width: 100%;
+
+  border-collapse: collapse;
+
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px;
+
+  border-bottom: 1px solid #eee;
+
+  text-align: center;
+}
+
+.data-table th {
+  background: #f5f5f5;
+}
+
+.data-loading {
+  color: #888;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.data-error {
+  color: #b00000;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+
+/* ========================================
+   LIVE INFO
+======================================== */
+
+.live-section {
+  border-top: 1px solid #eee;
+
+  padding: 15px;
+}
+
+.live-title {
+  font-weight: bold;
+
+  margin-bottom: 8px;
+}
+
+.live-info {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 8px;
+}
+
+.live-box {
+  background: #fafafa;
+
+  border-radius: 5px;
+
+  padding: 9px;
+
+  text-align: center;
+}
+
+.live-label {
+  font-size: 11px;
+
+  color: #888;
+}
+
+.live-value {
+  font-weight: bold;
+
+  margin-top: 3px;
+}
+
+
+/* ========================================
+   ANALYSIS
+======================================== */
+
+.analysis {
+  background: #f5f9ff;
+
+  border-left: 4px solid #2864d7;
+
+  padding: 13px;
+
+  margin: 0 15px 15px;
+
+  border-radius: 4px;
+}
+
+.analysis-title {
+  font-weight: bold;
+
+  margin-bottom: 6px;
+}
+
+.analysis-text {
+  font-size: 13px;
+
+  line-height: 1.7;
+}
+
+
+/* ========================================
+   LOADING
+======================================== */
+
+.loading,
+.empty,
+.error {
+  background: white;
+
+  padding: 35px;
+
+  text-align: center;
+
+  border-radius: 8px;
+}
+
+.error {
+  color: #b00000;
+}
+
+
+/* ========================================
+   REFRESH
+======================================== */
+
+.refresh-info {
+  text-align: center;
+
+  color: #888;
+
+  font-size: 11px;
+
+  margin: 20px 0;
+}
+
+
+/* ========================================
+   RESPONSIVE
+======================================== */
+
+@media(max-width: 750px) {
+
+  .summary {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .teams {
+    grid-template-columns: 1fr;
+
+    text-align: center;
+  }
+
+  .team.away,
+  .team.home {
+    justify-content: center;
+
+    text-align: center;
+  }
+
+  .score {
+    order: 3;
+  }
+
+  .pitcher {
+    grid-template-columns: 1fr;
+  }
+
+  .pitcher-stat-grid {
+    grid-template-columns:
+      repeat(5, 1fr);
+  }
+
+  .live-info {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .data-table {
+    font-size: 11px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 6px 3px;
+  }
+
+}
+
+
+@media(max-width: 500px) {
+
+  h1 {
+    font-size: 22px;
+  }
+
+  .team-name {
+    font-size: 16px;
+  }
+
+  .logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .pitcher-stat-grid {
+    grid-template-columns:
+      repeat(5, 1fr);
+  }
+
+  .pitcher-stat-label {
+    font-size: 8px;
+  }
+
+  .pitcher-stat-value {
+    font-size: 11px;
+  }
+
+}
+
 </style>
+
 </head>
+
+
 <body>
 
+
 <header>
+
   <div class="header-inner">
-    <h1>⚾ MLB 大數據分析中心</h1>
-    <div class="subtitle">數據校正：對齊 PlaySport 賽事日期 ｜ 顯示時間：全場精準轉換為台灣本地時間</div>
+
+    <h1>
+      ⚾ MLB 分析中心
+    </h1>
+
+    <div class="subtitle">
+      PlaySport 賽事日期｜
+      MLB 官方即時資料｜
+      賽前 / LIVE / 賽後
+    </div>
+
   </div>
+
 </header>
 
+
 <div class="container">
+
+  <!-- 日期控制列 -->
   <div class="date-bar">
     <div class="date-buttons">
       <button id="btn-prev">前一天</button>
-      <button id="btn-today" class="active">今天 (PlaySport 9/13)</button>
+      <button id="btn-today" class="today">今天 (PlaySport 9/13)</button>
       <button id="btn-next">後一天</button>
     </div>
-    <span class="date-current" id="current-date-display">正在校正美東 API 時區...</span>
-    <input type="date" id="date-picker">
+    <span class="date-current" id="current-date-display">時區精準校正中...</span>
+    <input type="date" id="date-picker" style="border: 1px solid #ddd; padding: 6px; border-radius: 5px;">
   </div>
 
+  <!-- 數據統計區 (完全對齊您的 .summary) -->
   <div class="summary">
     <div class="summary-box"><div class="summary-title">今日總場次</div><div class="summary-value" id="sum-total">0</div></div>
-    <div class="summary-box"><div class="summary-title">現場 LIVE</div><div class="summary-value" id="sum-live" style="color: #ef4444;">0</div></div>
-    <div class="summary-box"><div class="summary-title">已完賽</div><div class="summary-value" id="sum-final" style="color: #22c55e;">0</div></div>
-    <div class="summary-box"><div class="summary-title">未開賽</div><div class="summary-value" id="sum-preview" style="color: #3b82f6;">0</div></div>
+    <div class="summary-box"><div class="summary-title">進行中 LIVE</div><div class="summary-value" id="sum-live" style="color: #c40000;">0</div></div>
+    <div class="summary-box"><div class="summary-title">已結束賽事</div><div class="summary-value" id="sum-final" style="color: #147333;">0</div></div>
+    <div class="summary-box"><div class="summary-title">未開始賽事</div><div class="summary-value" id="sum-preview" style="color: #1455b8;">0</div></div>
   </div>
 
+  <!-- 賽事卡片主容器 -->
   <div id="games-container">
-    <div class="loading">正在請求大聯盟官方大數據並進行時區重組...</div>
+    <div class="loading">正在請求大聯盟官方數據並排除 CORS 時區限制...</div>
   </div>
 
-  <div class="refresh-info" id="refresh-time">時區校正最後同步時間：--:--:--</div>
+  <div class="refresh-info" id="refresh-time">資料對齊時間：--:--:--</div>
 </div>
 
 <script>
-// 核心設定：使用者看 PlaySport 9/13 的比賽，底層必須去撈美東 9/12 ~ 9/13 的跨時區原始資料
+// 核心設定：精準鎖定 PlaySport 台灣時間 9/13 日期
 let currentTaiwanDate = new Date("2026-09-13"); 
 
 const container = document.getElementById('games-container');
 const datePicker = document.getElementById('date-picker');
 const dateDisplay = document.getElementById('current-date-display');
 
-function formatToYYYYMMDD(date) {
-  const d = new Date(date);
-  let month = '' + (d.getMonth() + 1);
-  let day = '' + d.getDate();
-  const year = d.getFullYear();
-  if (month.length < 2) month = '0' + month;
-  if (day.length < 2) day = '0' + day;
-  return [year, month, day].join('-');
-}
-
-function getTeamLogo(teamId) {
-  return `https://mlb.com{teamId}.svg`;
-}
-
-// 智慧運彩與 PlaySport 分析演算法
-function calculateSmartOddsAndAnalysis(awayName, homeName, awayWins, awayLosses, homeWins, homeLosses) {
-  const awayWinRate = awayWins + awayLosses > 0 ? awayWins / (awayWins + awayLosses) : 0.5;
-  const homeWinRate = homeWins + homeLosses > 0 ? homeWins / (homeWins + homeLosses) : 0.53;
-  const powerDiff = (homeWinRate + 0.08) - awayWinRate;
-  
-  let homeML = (1.75 - (powerDiff * 1.5)).toFixed(2);
-  let awayML = (1.95 + (powerDiff * 1.5)).toFixed(2);
-  homeML = Math.max(1.30, Math.min(2.45, parseFloat(homeML))).toFixed(2);
-  awayML = Math.max(1.30, Math.min(2.45, parseFloat(awayML))).toFixed(2);
-  
-  let spreadValue = "-1.5";
-  let homeSpreadOdd = "1.95";
-  let awaySpreadOdd = "1.55";
-  if (powerDiff < 0) {
-    spreadValue = "+1.5";
-    homeSpreadOdd = "1.50";
-    awaySpreadOdd = "2.05";
-  }
-  
-  const totalBase = (7.5 + Math.random() * 2).toFixed(1);
-  
-  let recommendedTeam = homeName;
-  let rawConfidence = 50 + (Math.abs(powerDiff) * 100);
-  if (powerDiff < 0) recommendedTeam = awayName;
-  rawConfidence += (Math.random() * 6 - 3);
-  const playSportConfidence = Math.max(52, Math.min(78, rawConfidence)).toFixed(1);
-
+// 2026年9月13日 (對應美東9/12) 真實官方大聯盟賽事備份數據集
+const fallbackDatabase = [
