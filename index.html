@@ -68,27 +68,31 @@ async function json(url,timeout=15000){
   try{let r=await fetch(url,{signal:c.signal});if(!r.ok)throw Error(r.status);return await r.json()}finally{clearTimeout(t)}
 }
 async function mlbSchedule(){
-  /*
-    selectedDate 是台灣日期。MLB API 的 date 是美國日期，不能直接用
-    selectedDate-1，否則跨日比賽可能被錯誤歸到同一天，甚至造成重複。
-    抓前一天、當天、後一天，再依「台灣時間的 gameDate」精確過濾。
-  */
-  const dates=[addDays(selectedDate,-1),selectedDate,addDays(selectedDate,1)];
-  const rows=await Promise.all(dates.map(q=>
-    json(`${MLB_API}/schedule?sportId=1&date=${q}&hydrate=team,probablePitcher`).catch(()=>null)
-  ));
-  const out=[];
-  for(const d of rows){
-    for(const x of (d?.dates||[])){
-      for(const g of (x.games||[])){
-        const twDate=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(g.gameDate));
-        if(twDate===selectedDate) out.push(g);
-      }
-    }
-  }
-  /* API 理論上不會重複；再以 gamePk 去重，避免跨日期查詢時重複顯示同一場。 */
-  const unique=[...new Map(out.map(g=>[g.gamePk,g])).values()];
-  return unique.sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
+  // 網站日期以「台灣日期」為準。
+  // MLB API 的 date 是美國當地賽程日期，因此不能直接用 date=selectedDate。
+  // 例如美國 9/15 晚上的比賽，在台灣可能已經是 9/16 上午，應歸到台灣 9/16。
+  // 先抓前一天～後一天的 MLB 官方賽程，再把 gameDate 轉成台灣日期篩選。
+  const begin=addDays(selectedDate,-1), end=addDays(selectedDate,1);
+  const d=await json(`${MLB_API}/schedule?sportId=1&startDate=${begin}&endDate=${end}&hydrate=team,probablePitcher`).catch(()=>null);
+  if(!d)return [];
+
+  const taiwanDate=g=>{
+    try{
+      return new Intl.DateTimeFormat("en-CA",{
+        year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Taipei"
+      }).format(new Date(g.gameDate));
+    }catch{return ""}
+  };
+
+  const seen=new Set();
+  return (d.dates||[]).flatMap(x=>x.games||[])
+    .filter(g=>taiwanDate(g)===selectedDate)
+    .filter(g=>{
+      if(seen.has(g.gamePk))return false;
+      seen.add(g.gamePk);
+      return true;
+    })
+    .sort((a,b)=>new Date(a.gameDate)-new Date(b.gameDate));
 }
 function logo(id){return `https://www.mlbstatic.com/team-logos/${id}.svg`}
 function code(t){return t?.abbreviation||t?.team?.abbreviation||""}
