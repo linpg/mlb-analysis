@@ -622,38 +622,10 @@ function accuracySummary(){
   const unscoredFinal=storedToday.filter(x=>x.settled===false).length;
   return {n:all.length,wins,misses,teamPct,scorePct,scoredN:scored.length,storedN:storedToday.length,unscoredFinal};
 }
-function confidenceStatsHTML(){
-  const rows=cloudHistory.filter(x=>x?.hit==="⭕️命中"||x?.hit==="❌未命中");
-  const bins=[
-    {label:"50–59%",min:50,max:59},
-    {label:"60–69%",min:60,max:69},
-    {label:"70–79%",min:70,max:79},
-    {label:"80–89%",min:80,max:89},
-    {label:"90%+",min:90,max:101}
-  ];
-  const calc=(arr)=>{const n=arr.length,w=arr.filter(x=>x.hit==="⭕️命中").length;return {n,w,m:n-w,p:n?w/n*100:null}};
-  const stats=bins.map(b=>({label:b.label,...calc(rows.filter(x=>Number(x.confidence)>=b.min&&Number(x.confidence)<=b.max))}));
-  const high=calc(rows.filter(x=>Number(x.confidence)>=80));
-  const f=v=>v==null?"-":`${v.toFixed(1)}%`;
-  if(!cloudLoaded && !rows.length)return `<div class="accuracy-box"><div class="section-title">📈 參考信心長期統計</div><div class="muted">正在讀取 Google Sheets 歷史資料…</div></div>`;
-  return `<div class="accuracy-box"><div class="section-title">📈 參考信心長期統計 <span class="phase-tag">Google Sheets</span></div>
-  <div class="accuracy-grid">
-    <div class="accuracy-item"><span class="muted">80%以上累積場數</span><b>${high.n} 場</b></div>
-    <div class="accuracy-item"><span class="muted">80%以上命中</span><b>${high.w} 場</b></div>
-    <div class="accuracy-item"><span class="muted">80%以上未命中</span><b>${high.m} 場</b></div>
-    <div class="accuracy-item"><span class="muted">80%以上實際命中率</span><b>${f(high.p)}</b></div>
-  </div>
-  <div class="tablewrap" style="margin-top:10px"><table class="data-table"><thead><tr><th>參考信心</th><th>場數</th><th>命中</th><th>未命中</th><th>實際命中率</th></tr></thead><tbody>
-  ${stats.map(x=>`<tr><td>${x.label}</td><td>${x.n}</td><td>${x.w}</td><td>${x.m}</td><td>${f(x.p)}</td></tr>`).join("")}
-  </tbody></table></div>
-  <div class="accuracy-note">資料來源：Google Sheets；只統計已完賽且有「勝負分析參考信心」的紀錄。模型參考信心是模型指標，不等同於真實機率。</div>
-  </div>`;
-}
 function accuracyHTML(){
   const a=accuracySummary();
   const f=v=>v==null?"-":`${v.toFixed(1)}%`;
-  let html=confidenceStatsHTML();
-  if(a.n===0)return html;
+  if(a.n===0)return "";
   return `<div class="accuracy-box"><div class="section-title">📊 當日模型預測準確度 <span class="phase-tag">${MODEL_VERSION}</span></div>
   <div class="accuracy-grid">
     <div class="accuracy-item"><span class="muted">🏆 預測隊伍準確率</span><b>${f(a.teamPct)}</b></div>
@@ -661,7 +633,7 @@ function accuracyHTML(){
     <div class="accuracy-item"><span class="muted">預測正確</span><b>${a.wins} 場</b></div>
     <div class="accuracy-item"><span class="muted">預測錯誤</span><b>${a.misses} 場</b></div>
   </div>
-  </div>`+html;
+  </div>`;
 }
 
 function prediction(g,ps,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull){
@@ -844,7 +816,6 @@ async function renderGame(g,ps,live,feedData){
 async function load(){
   const my=++version;if(timer){clearInterval(timer);timer=null}
   setDateUI();document.getElementById("accuracy").innerHTML=accuracyHTML();document.getElementById("games").innerHTML=`<div class="loading">正在載入 ${fmtDate()}…<br><br>同步 MLB 官方資料</div>`;
-  loadCloudHistory().then(()=>{if(my===version)document.getElementById("accuracy").innerHTML=accuracyHTML()});
   try{
     let games=await mlbSchedule(),ps=new Map();
     if(my!==version)return;
