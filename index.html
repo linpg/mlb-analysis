@@ -448,14 +448,6 @@ async function playsport(){
   return map;
 }
 async function liveJSON(oids){
-  if(!oids.length)return {};
-  let oid=oids.join(",");
-  for(const d of LS){
-    try{
-      let u=`${d}/ls_json.php?alliance=1&gamedate=${psDate()}&pbp=1&teamStat=1&oid=${encodeURIComponent(oid)}&xcb=${Date.now()}`;
-      let r=await fetch(u);if(!r.ok)continue;let x=await r.json();return x||{};
-    }catch(e){}
-  }
   return {};
 }
 function findPS(ps,g){
