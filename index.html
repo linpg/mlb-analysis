@@ -45,6 +45,7 @@ const PS="https://www.playsport.cc/livescore/1";
 const PSP="https://www.playsport.cc/predict/scale?allianceid=1&gametime=";
 const LS=["https://ls6.playsport.cc","https://ls7.playsport.cc"];
 let selectedDate=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Taipei"});
+let version=0,timer=null;
 const teamCache=new Map(),playerCache=new Map();
 
 const teamNames={
@@ -67,6 +68,10 @@ async function json(url,timeout=15000){
   try{let r=await fetch(url,{signal:c.signal});if(!r.ok)throw Error(r.status);return await r.json()}finally{clearTimeout(t)}
 }
 async function mlbSchedule(){
+  // 網站日期以「台灣日期」為準。
+  // MLB API 的 date 是美國當地賽程日期，因此不能直接用 date=selectedDate。
+  // 例如美國 9/15 晚上的比賽，在台灣可能已經是 9/16 上午，應歸到台灣 9/16。
+  // 先抓前一天～後一天的 MLB 官方賽程，再把 gameDate 轉成台灣日期篩選。
   const begin=addDays(selectedDate,-1), end=addDays(selectedDate,1);
   const d=await json(`${MLB_API}/schedule?sportId=1&startDate=${begin}&endDate=${end}&hydrate=team,probablePitcher`).catch(()=>null);
   if(!d)return [];
@@ -123,6 +128,9 @@ async function teamStats(id){
   let v={avg:s.avg??null,ops:s.ops??null,runs:s.runs??null,games:s.gamesPlayed??null,obp:s.obp??null,slg:s.slg??null,source:"MLB 官方本季"};
   teamCache.set(key,v);return v;
 }
+
+/* 精確計算指定球隊最近10場「已完成」比賽的打擊數據。
+   不用本季數據代替近10場；資料不足就回傳 null。 */
 async function recentTeamStats(id){
   const key=`recent10-${id}-${selectedDate}`;
   if(teamCache.has(key))return teamCache.get(key);
@@ -181,6 +189,7 @@ async function recentBullpenStats(id){
     if(!pitchers.length)continue;
     for(const pl of pitchers){
       const ps=pl.stats.pitching;
+      // gamesStarted=1 的先發不計入牛棚，其餘出賽投手視為牛棚。
       if(Number(ps.gamesStarted||0)>0)continue;
       ip+=Number(ps.inningsPitched)||0;
       er+=Number(ps.earnedRuns)||0;
@@ -195,6 +204,7 @@ async function recentBullpenStats(id){
 async function pitcher(id){
   if(!id)return null;if(playerCache.has(id))return playerCache.get(id);
   let season=new Date().getFullYear();
+  // season + seasonAdvanced：K/9、BB/9 等由 MLB Stats API 提供；FIP 若 API 沒回傳就保持資料不足。
   let d=await json(`${MLB_API}/people/${id}/stats?stats=season,seasonAdvanced&group=pitching&season=${season}`).catch(()=>null);
   const splits=d?.stats||[];
   const basic=splits.find(x=>x.type?.displayName==="season"||x.type?.name==="season")?.splits?.[0]?.stat||splits?.[0]?.splits?.[0]?.stat||{};
@@ -210,6 +220,11 @@ async function pitcher(id){
   };
   playerCache.set(id,p);return p;
 }
+
+/* ---------------- PlaySport ----------------
+   GitHub Pages 本身無法穩定直接跨網域抓 PlaySport。
+   依序嘗試公開 CORS proxy；若 proxy 不可用，頁面仍保留 MLB 官方資料。
+*/
 async function fetchText(url){
   const targets=[
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -228,6 +243,7 @@ function textBetween(text,label,nextLabels=[]){
   nextLabels.forEach(n=>{let j=x.indexOf(n);if(j>=0&&j<end)end=j});
   return strip(x.slice(0,end)).slice(0,160);
 }
+function parsePercent(s){let m=String(s).match(/(\d+(?:\.\d+)?)\s*%/);return m?m[1]+"%":"-"}
 function parsePS(html){
   const doc=new DOMParser().parseFromString(html,"text/html");
   const map=new Map();
@@ -241,6 +257,9 @@ function parsePS(html){
     const spreadHome=(tx.match(/主\s*([+-]?\d+(?:\.\d+)?)\s*[,，@]\s*(\d+(?:\.\d+)?)/)||[]);
     const mlAway=(tx.match(/(?:^|[\s|])客\s*(\d+(?:\.\d+)?)(?=\s|\||$)/)||[]);
     const mlHome=(tx.match(/(?:^|[\s|])主\s*(\d+(?:\.\d+)?)(?=\s|\||$)/)||[]);
+    // 國際盤大小分（PlaySport「觀看預測比例」）格式：
+    // 「大7.5贏50%」、「大8輸50%」、「小7.5贏50%」等。
+    // 這一組才是我們要的國際盤大小分；不要拿運彩「大7.5, 1.82」覆蓋它。
     const intlTotals=[...tx.matchAll(/(?:^|[\s|])([大小])\s*(\d+(?:\.\d+)?)\s*(?:(贏|輸|平)\s*)?(\d+(?:\.\d+)?)?\s*%/g)];
     const intl= intlTotals[0] || null;
     const intlPick=intl?intl[1]:null;
@@ -248,6 +267,8 @@ function parsePS(html){
     const intlResult=intl?intl[3]||null:null;
     const intlRate=intl&&intl[4]!=null?+intl[4]:null;
 
+    // 運彩盤的「大X, 賠率」只作為舊資料格式備援；如果已抓到國際盤，
+    // 絕對不能用運彩盤覆蓋 totalLine / overRate。
     const totals=[...tx.matchAll(/(?:^|[\s|])([大小])\s*(\d+(?:\.\d+)?)\s*(?:[,，@]\s*|\s+)(\d+(?:\.\d+)?)(?=\s|\||$)/g)];
     const ov=totals.find(x=>x[1]==="大"), un=totals.find(x=>x[1]==="小");
     const line=intlLine!=null?intlLine:(ov?+ov[2]:(un?+un[2]:null));
@@ -285,6 +306,7 @@ function parsePS(html){
       return;
     }
     const mk=market(tx);
+    const posA=tx.indexOf(away), posH=tx.indexOf(home);
     const pitchers={};
     [away,home].forEach((n,i)=>{
       const pos=tx.indexOf(n);
@@ -297,6 +319,7 @@ function parsePS(html){
       over:"",record:"",homeAway:"",h2h:"",last10:"",vsR:"",vsL:"",avgRun:"",avgRun10:""});
   }
 
+  // ① 優先使用完整賽事 DOM 區塊。
   const teamAnchors=[...doc.querySelectorAll('a')].filter(a=>names.includes(clean(a.textContent)));
   teamAnchors.forEach(a=>{
     let node=a,best=null,bestScore=-999;
@@ -317,6 +340,10 @@ function parsePS(html){
     if(found.length>=2)addGame(found[0],found[1],tx);
   });
 
+  // ② 若①沒有把大小盤帶進同一個父層，改用頁面全文做「兩隊名附近視窗」補抓。
+  // 這是本次修正的重點：不再要求「隊名與大小盤必須位於同一個 DOM 父層」。
+  // PlaySport 把盤口放在 input.value / value 屬性裡，innerText 不一定會把它算進文字。
+  // 先把所有 input 的 value 真正轉成文字，再做隊伍／盤口配對。
   const textDoc=doc.cloneNode(true);
   textDoc.querySelectorAll("input").forEach(inp=>{
     const v=inp.getAttribute("value") ?? inp.value ?? "";
@@ -330,11 +357,15 @@ function parsePS(html){
       const pa=bodyText.indexOf(away),ph=bodyText.indexOf(home,pa+away.length);
       if(pa<0||ph<0||ph-pa>4500)continue;
       const tx=bodyText.slice(pa,Math.min(bodyText.length,ph+1800));
+      // 國際盤大小格式可能是「大8贏50%／大8輸50%」，不一定帶賠率。
+      // 只有運彩盤才常見「大8.5, 1.82」，兩種格式都允許進入配對，
+      // 但 market() 會優先採用國際盤格式。
       if(!/(?:大|小)\s*\d+(?:\.\d+)?\s*(?:(?:贏|輸|平)\s*\d+(?:\.\d+)?\s*%|(?:[,，@]|\s+)\s*\d+(?:\.\d+)?)/.test(tx))continue;
       addGame(away,home,tx);
     }
   }
 
+  // ③ livescore 詳細頁：補齊過盤率、戰績、近況，以及可能單獨存在的大小盤。
   doc.querySelectorAll('[data-oid]').forEach(el=>{
     const oid=el.getAttribute('data-oid')||"",txt=clean(el.innerText||el.textContent||"");
     if(!oid||!txt)return;
@@ -367,6 +398,7 @@ function parsePS(html){
       const fallback=market(txt);
       if(fallback.totalLine!=null){
         obj.totalLine=fallback.totalLine;
+        // 只有沒有國際盤時才接受舊格式的運彩大小盤；不覆蓋已抓到的國際盤。
         if(obj.overOdds==null)obj.overOdds=fallback.overOdds;
         if(obj.underOdds==null)obj.underOdds=fallback.underOdds;
         if(!obj.total)obj.total=fallback.total;
@@ -393,6 +425,8 @@ async function playsport(){
     for(const [k,v] of detail){
       let hit=map.get(k);
       if(hit){
+        // 合併 PlaySport 多來源資料時，絕不能用 null/空字串覆蓋已抓到的盤口。
+        // 預測頁通常有大小分，livescore 頁可能沒有；保留已存在的有效值。
         const keepIfMissing=[
           "totalLine","overOdds","underOdds","spreadAway","spreadAwayOdds",
           "spreadHome","spreadHomeOdds","moneyAway","moneyHome","overRate",
@@ -404,6 +438,7 @@ async function playsport(){
           const existingMissing=hit[field]===null||hit[field]===undefined||hit[field]===""||hit[field]==="-";
           if(!missing || existingMissing){ hit[field]=value; }
         }
+        // 大小分若已經抓到，重新組合顯示字串，避免被第二來源清空。
         if(hit.totalLine!=null){
           hit.total=`${hit.totalLine}（大 ${hit.overOdds??"-"} / 小 ${hit.underOdds??"-"}）`;
         }
@@ -412,7 +447,17 @@ async function playsport(){
   }
   return map;
 }
-
+async function liveJSON(oids){
+  if(!oids.length)return {};
+  let oid=oids.join(",");
+  for(const d of LS){
+    try{
+      let u=`${d}/ls_json.php?alliance=1&gamedate=${psDate()}&pbp=1&teamStat=1&oid=${encodeURIComponent(oid)}&xcb=${Date.now()}`;
+      let r=await fetch(u);if(!r.ok)continue;let x=await r.json();return x||{};
+    }catch(e){}
+  }
+  return {};
+}
 function findPS(ps,g){
   let a=code(g.teams?.away),h=code(g.teams?.home);
   let an=teamNames[a]||g.teams?.away?.team?.name||"",hn=teamNames[h]||g.teams?.home?.team?.name||"";
@@ -424,6 +469,9 @@ function findPS(ps,g){
   return null;
 }
 function val(x){return x&&x!=="-"?esc(x):"<span class='muted'>尚無資料</span>"}
+function scoreText(g){
+  let a=g.teams?.away?.score??"-",h=g.teams?.home?.score??"-";return `${a} - ${h}`;
+}
 function psTable(p){
   if(!p)return `<div class="muted">PlaySport 預測盤口目前未取得。</div>`;
   return `<div class="tablewrap"><table class="data-table">
@@ -435,14 +483,25 @@ function psTable(p){
   <tr><th>平均得/失</th><td colspan="2">${val(p.avgRun)}</td><th>近10得/失</th><td colspan="2">${val(p.avgRun10)}</td></tr>
   </table></div>`;
 }
+function nums(s){
+  return [...String(s||"").matchAll(/(?:^|[^\d])(\d+(?:\.\d+)?)(?=%|\s|$)/g)].map(m=>+m[1]);
+}
 function rateFromText(s){
   let m=String(s||"").match(/(\d+(?:\.\d+)?)\s*%/);
+  return m?+m[1]:null;
+}
+function totalLine(s){
+  let m=String(s||"").match(/(?:大小|大分|小分|總分|盤口)?\s*([7-9](?:\.\d+)?|10(?:\.\d+)?|11(?:\.\d+)?|12(?:\.\d+)?)/);
+  return m?+m[1]:null;
+}
+function runValue(s){
+  let m=String(s||"").match(/(\d+(?:\.\d+)?)\s*(?:分|分\/場|R|Runs)?/);
   return m?+m[1]:null;
 }
 const MODEL_VERSION="V2.0";
 const PRED_STORE_KEY="mlb_model_predictions_v2";
 function seasonPhase(date){
-  const m=Number(String(date||"").slice(5,7));
+  const m=Number(String(date||"").slice(5,7)),d=Number(String(date||"").slice(8,10));
   if(!m)return {name:"未知",recentWeight:0.20};
   if(m<=4)return {name:"開季",recentWeight:0.12};
   if(m<=6)return {name:"前半季",recentWeight:0.16};
@@ -459,6 +518,7 @@ function savePredictionRecord(rec){
     const all=loadPredictionRecords();
     const i=all.findIndex(x=>x.gamePk===rec.gamePk);
     if(i>=0){
+      // 一旦保存過賽前預測，不用之後重新計算的版本覆蓋原始預測。
       all[i]={...all[i],...rec, predA:all[i].predA, predH:all[i].predH, winnerSide:all[i].winnerSide, createdAt:all[i].createdAt};
     }else all.push(rec);
     localStorage.setItem(PRED_STORE_KEY,JSON.stringify(all.slice(-2000)));
@@ -466,12 +526,14 @@ function savePredictionRecord(rec){
 }
 function settlePredictionRecord(g){
   if(!g?.gamePk)return;
+  // 只有 MLB 官方狀態明確為 Final，才允許把預測列入當日準確度。
+  if(g.status?.abstractGameState!=="Final")return;
   const a=Number(g.teams?.away?.score),h=Number(g.teams?.home?.score);
   if(!Number.isFinite(a)||!Number.isFinite(h))return;
   const actual=a>h?'away':h>a?'home':'tie';
   const all=loadPredictionRecords();
   const i=all.findIndex(x=>x.gamePk===g.gamePk);
-  if(i<0)return;
+  if(i<0)return; // 沒有保存過賽前預測，不倒推
   const rec=all[i];
   if(rec.settled)return;
   rec.actualWinner=actual;rec.actualAway=a;rec.actualHome=h;rec.settled=true;
@@ -485,6 +547,7 @@ function settlePredictionRecord(g){
   localStorage.setItem(PRED_STORE_KEY,JSON.stringify(all));
 }
 function updateAccuracy(g,p){
+  // 僅將已保存的賽前預測與完賽結果配對，不重新產生歷史預測。
   settlePredictionRecord(g);
 }
 function accuracySummary(){
@@ -495,9 +558,12 @@ function accuracySummary(){
   const misses=all.length-wins;
   const teamPct=all.length?wins/all.length*100:null;
   const scoreMAE=scored.length?scored.reduce((s,x)=>s+((x.awayError+x.homeError)/2),0)/scored.length:null;
-  const totalMAE=scored.length?scored.reduce((s,x)=>s+x.totalError,0)/scored.length:null;
+  // 將每隊平均比分誤差換算成 0~100 的可讀指標；誤差每增加 1 分，準確度下降 10 個百分點。
   const scorePct=scoreMAE==null?null:Math.max(0,Math.min(100,100-scoreMAE*10));
-  return {n:all.length,wins,misses,teamPct,scorePct,scoreMAE,totalMAE,scoredN:scored.length};
+  const finalGamesToday=[...new Set(all.map(x=>x.gamePk))].length;
+  const storedToday=loadPredictionRecords().filter(x=>x.selectedDate===date);
+  const unscoredFinal=storedToday.filter(x=>x.settled===false).length;
+  return {n:all.length,wins,misses,teamPct,scorePct,scoredN:scored.length,storedN:storedToday.length,unscoredFinal};
 }
 function accuracyHTML(){
   const a=accuracySummary();
@@ -509,237 +575,228 @@ function accuracyHTML(){
     <div class="accuracy-item"><span class="muted">⚾ 預測得分準確度</span><b>${f(a.scorePct)}</b></div>
     <div class="accuracy-item"><span class="muted">預測正確</span><b>${a.wins} 場</b></div>
     <div class="accuracy-item"><span class="muted">預測錯誤</span><b>${a.misses} 場</b></div>
-    <div class="accuracy-item"><span class="muted">比分 MAE</span><b>${a.scoreMAE == null ? "-" : a.scoreMAE.toFixed(2)}</b></div>
   </div>
-  <div class="accuracy-note">當日已有 ${a.n} 場完賽比對（每隊比分平均誤差：${a.scoreMAE == null ? "-" : a.scoreMAE.toFixed(2)} 分，總分平均誤差：${a.totalMAE == null ? "-" : a.totalMAE.toFixed(2)} 分）。</div></div>`;
+  </div>`;
 }
 
-function renderResultBadges(g) {
-  const all = loadPredictionRecords();
-  const rec = all.find(x => x.gamePk === g.gamePk);
-  if (!rec) return '';
-
-  const a = Number(g.teams?.away?.score), h = Number(g.teams?.home?.score);
-  const isFinal = g.status?.abstractGameState === "Final" && Number.isFinite(a) && Number.isFinite(h);
-  
-  if (!isFinal) {
-    return `<div class="result-badges">
-      <span class="result-badge pending">⏳ 模型賽前預測：${rec.winnerSide === 'away' ? '客勝' : '主勝'} (${rec.predA} - ${rec.predH})</span>
-    </div>`;
-  }
-
-  const actualWinner = a > h ? 'away' : h > a ? 'home' : 'tie';
-  const winnerHit = rec.winnerSide === actualWinner;
-  const awayErr = Math.abs(rec.predA - a);
-  const homeErr = Math.abs(rec.predH - h);
-  const totalErr = Math.abs((rec.predA + rec.predH) - (a + h));
-
-  return `<div class="result-badges">
-    <span class="result-badge ${winnerHit ? 'hit' : 'miss'}">${winnerHit ? '🎯 勝負預測命中' : '❌ 勝負預測未命中'} (${rec.winnerSide === 'away' ? '預測客勝' : '預測主勝'})</span>
-    <span class="result-badge ${awayErr <= 1.5 ? 'hit' : 'miss'}">客隊得分誤差 ${awayErr.toFixed(1)}分</span>
-    <span class="result-badge ${homeErr <= 1.5 ? 'hit' : 'miss'}">主隊得分誤差 ${homeErr.toFixed(1)}分</span>
-    <span class="result-badge ${totalErr <= 2.0 ? 'hit' : 'miss'}">總分誤差 ${totalErr.toFixed(1)}分</span>
-  </div>
-  <div class="result-note">賽前預估：${rec.predA} - ${rec.predH} ｜ 實際比分：${a} - ${h}</div>`;
-}
-
-async function render() {
-  const dateStr = selectedDate;
-  setDateUI();
-  document.getElementById("games").innerHTML = `<div class="loading">正在載入 ${fmtDate()} MLB 比賽與數據…</div>`;
-  document.getElementById("accuracy").innerHTML = "";
-
-  const games = await mlbSchedule();
-  document.getElementById("total").textContent = games.length;
-
-  let previewCount = 0, liveCount = 0, finalCount = 0;
-  games.forEach(g => {
-    const s = g.status?.abstractGameState;
-    if (s === "Live") liveCount++;
-    else if (s === "Final") finalCount++;
-    else previewCount++;
-  });
-
-  document.getElementById("preview").textContent = previewCount;
-  document.getElementById("live").textContent = liveCount;
-  document.getElementById("final").textContent = finalCount;
-
-  if (!games.length) {
-    document.getElementById("games").innerHTML = `<div class="error">本日尚無 MLB 賽程資料 (${fmtDate()})</div>`;
-    document.getElementById("refreshInfo").textContent = `更新時間：${new Date().toLocaleTimeString()} ｜ 無賽事`;
-    return;
-  }
-
-  const psMap = await playsport().catch(() => new Map());
-
-  let html = "";
-  for (const g of games) {
-    const [stText, stClass] = gameStatus(g);
-    const awayCode = code(g.teams?.away);
-    const homeCode = code(g.teams?.home);
-    const awayName = teamNames[awayCode] || g.teams?.away?.team?.name || "";
-    const homeName = teamNames[homeCode] || g.teams?.home?.team?.name || "";
-    
-    const psData = findPS(psMap, g);
-
-    const [feedData, aTeam, hTeam, aRecent, hRecent, aBullpen, hBullpen, aPit, hPit] = await Promise.all([
-      feed(g),
-      teamStats(g.teams?.away?.team?.id),
-      teamStats(g.teams?.home?.team?.id),
-      recentTeamStats(g.teams?.away?.team?.id),
-      recentTeamStats(g.teams?.home?.team?.id),
-      recentBullpenStats(g.teams?.away?.team?.id),
-      recentBullpenStats(g.teams?.home?.team?.id),
-      pitcher(g.teams?.away?.probablePitcher?.id),
-      pitcher(g.teams?.home?.probablePitcher?.id)
-    ]);
-
-    const weather = extractWeather(feedData);
-
-    const awayScore = g.teams?.away?.score ?? "-";
-    const homeScore = g.teams?.home?.score ?? "-";
-    const inningText = feedData?.liveData?.linescore?.currentInningOrdinal 
-      ? `${feedData.liveData.linescore.isTopInning ? '上' : '下'}${feedData.liveData.linescore.currentInningOrdinal}`
-      : "";
-
-    const phase = seasonPhase(dateStr);
-    
-    let aRunBase = 4.3, hRunBase = 4.3;
-    if (aRecent?.runs != null) aRunBase = aRecent.runs * phase.recentWeight + (Number(aTeam?.runs || 4.3) / (aTeam?.games || 162)) * (1 - phase.recentWeight);
-    else if (aTeam?.runs != null) aRunBase = Number(aTeam.runs) / (aTeam.games || 162);
-
-    if (hRecent?.runs != null) hRunBase = hRecent.runs * phase.recentWeight + (Number(hTeam?.runs || 4.3) / (hTeam?.games || 162)) * (1 - phase.recentWeight);
-    else if (hTeam?.runs != null) hRunBase = Number(hTeam.runs) / (hTeam.games || 162);
-
-    hRunBase += 0.25;
-
-    const aEra = Number(aPit?.era) || 4.10;
-    const hEra = Number(hPit?.era) || 4.10;
-    
-    let predA = (aRunBase * (hEra / 4.10)).toFixed(1);
-    let predH = (hRunBase * (aEra / 4.10)).toFixed(1);
-
-    if (weather.temp != null) {
-      if (weather.temp > 85) { predA = (Number(predA) + 0.2).toFixed(1); predH = (Number(predH) + 0.2).toFixed(1); }
-      else if (weather.temp < 55) { predA = (Number(predA) - 0.2).toFixed(1); predH = (Number(predH) - 0.2).toFixed(1); }
+function prediction(g,ps,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull){
+  const reasons=[];
+  let scoreA=0,scoreH=0;
+  if(ap?.era!=null&&hp?.era!=null){
+    const ea=Number(ap.era),eh=Number(hp.era);
+    if(Number.isFinite(ea)&&Number.isFinite(eh)){
+      if(ea<eh){scoreA+=2;reasons.push(`客隊先發 ERA ${ea.toFixed(2)} 優於主隊 ${eh.toFixed(2)}`)}
+      else if(eh<ea){scoreH+=2;reasons.push(`主隊先發 ERA ${eh.toFixed(2)} 優於客隊 ${ea.toFixed(2)}`)}
     }
-
-    const winnerSide = Number(predA) > Number(predH) ? 'away' : 'home';
-
-    const recData = {
-      gamePk: g.gamePk,
-      selectedDate: dateStr,
-      awayCode, homeCode,
-      predA: Number(predA),
-      predH: Number(predH),
-      winnerSide,
-      settled: false,
-      createdAt: new Date().toISOString()
-    };
-    savePredictionRecord(recData);
-    updateAccuracy(g, psData);
-
-    const resultBadgesHTML = renderResultBadges(g);
-
-    html += `
-    <div class="game-card">
-      <div class="game-top">
-        <div class="game-time">⏰ ${timeTW(g)}</div>
-        <div class="status ${stClass}">${stText}</div>
-      </div>
-      <div class="teams">
-        <div class="team away">
-          <div>
-            <div class="team-name">${esc(awayName)}</div>
-            <div class="team-sub">客隊 (${awayCode})</div>
-          </div>
-          <img class="logo" src="${logo(g.teams?.away?.team?.id)}" alt="${esc(awayName)}">
-        </div>
-        <div>
-          <div class="score">${awayScore} - ${homeScore}</div>
-          <div class="inning">${esc(inningText)}</div>
-        </div>
-        <div class="team home">
-          <img class="logo" src="${logo(g.teams?.home?.team?.id)}" alt="${esc(homeName)}">
-          <div>
-            <div class="team-name">${esc(homeName)}</div>
-            <div class="team-sub">主隊 (${homeCode})</div>
-          </div>
-        </div>
-      </div>
-
-      ${resultBadgesHTML ? `<div style="padding:0 15px;">${resultBadgesHTML}</div>` : ''}
-
-      <div class="section">
-        <div class="section-title">🔮 模型分數與勝負預測</div>
-        <div class="score-prediction">
-          <div>
-            <span class="muted">${esc(awayName)} (客)</span>
-            <strong>${predA}</strong>
-          </div>
-          <div class="score-dash">-</div>
-          <div>
-            <span class="muted">${esc(homeName)} (主)</span>
-            <strong>${predH}</strong>
-          </div>
-          <div class="score-total">
-            <span class="muted">預估總分 / 勝隊</span>
-            <strong>${(Number(predA) + Number(predH)).toFixed(1)} 分 (${winnerSide === 'away' ? '客勝' : '主勝'})</strong>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">⚾ 先發投手對決</div>
-        <div class="two">
-          <div class="pitch">
-            <div class="pitch-name">客隊：${esc(g.teams?.away?.probablePitcher?.fullName || "未定")}</div>
-            <div class="statgrid">
-              <div class="stat"><b>${aPit?.era || "-"}</b><span>ERA</span></div>
-              <div class="stat"><b>${aPit?.whip || "-"}</b><span>WHIP</span></div>
-              <div class="stat"><b>${aPit?.wins || 0}-${aPit?.losses || 0}</b><span>勝-敗</span></div>
-              <div class="stat"><b>${aPit?.k9 || "-"}</b><span>K/9</span></div>
-              <div class="stat"><b>${aPit?.bb9 || "-"}</b><span>BB/9</span></div>
-            </div>
-          </div>
-          <div class="pitch">
-            <div class="pitch-name">主隊：${esc(g.teams?.home?.probablePitcher?.fullName || "未定")}</div>
-            <div class="statgrid">
-              <div class="stat"><b>${hPit?.era || "-"}</b><span>ERA</span></div>
-              <div class="stat"><b>${hPit?.whip || "-"}</b><span>WHIP</span></div>
-              <div class="stat"><b>${hPit?.wins || 0}-${hPit?.losses || 0}</b><span>勝-敗</span></div>
-              <div class="stat"><b>${hPit?.k9 || "-"}</b><span>K/9</span></div>
-              <div class="stat"><b>${hPit?.bb9 || "-"}</b><span>BB/9</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">🌤️ 球場天氣狀況</div>
-        <div class="weather-value">
-          ${weather.temp != null ? `${weather.temp}°F` : '<span class="muted">氣溫無資料</span>'}
-          <span class="muted">｜ ${esc(weather.condition || "天氣狀況未知")} ｜ 風速：${esc(weather.windText || "無風速資料")}</span>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">📊 PlaySport 國際盤口數據</div>
-        ${psTable(psData)}
-      </div>
-    </div>`;
   }
+  if(aRecent?.avg!=null&&hRecent?.avg!=null){
+    const aa=Number(aRecent.avg),ah=Number(hRecent.avg);
+    if(aa>ah){scoreA++;reasons.push(`客隊近10場 AVG ${aRecent.avg} 高於主隊 ${hRecent.avg}`)}
+    else if(ah>aa){scoreH++;reasons.push(`主隊近10場 AVG ${hRecent.avg} 高於客隊 ${aRecent.avg}`)}
+  }
+  if(aStats?.ops!=null&&hStats?.ops!=null){
+    const oa=Number(aStats.ops),oh=Number(hStats.ops);
+    if(oa>oh){scoreA++;reasons.push(`客隊本季 OPS ${aStats.ops} 高於主隊 ${hStats.ops}`)}
+    else if(oh>oa){scoreH++;reasons.push(`主隊本季 OPS ${hStats.ops} 高於客隊 ${aStats.ops}`)}
+  }
+  if(aBull?.era!=null&&hBull?.era!=null){
+    if(Number(aBull.era)<Number(hBull.era)){scoreA++;reasons.push(`客隊近10場牛棚 ERA ${aBull.era.toFixed(2)} 優於主隊 ${hBull.era.toFixed(2)}`)}
+    else if(Number(hBull.era)<Number(aBull.era)){scoreH++;reasons.push(`主隊近10場牛棚 ERA ${hBull.era.toFixed(2)} 優於客隊 ${aBull.era.toFixed(2)}`)}
+  }
+  const winnerSide=scoreA>scoreH?'away':scoreH>scoreA?'home':'tie';
+  const awayLabel=teamNames[code(g.teams.away)]||g.teams.away.team?.name||'客隊';
+  const homeLabel=teamNames[code(g.teams.home)]||g.teams.home.team?.name||'主隊';
+  const winner=winnerSide==='away'?`${awayLabel}較優`:winnerSide==='home'?`${homeLabel}較優`:'勝負五五開';
+  const confidence=reasons.length?Math.min(85,50+Math.abs(scoreA-scoreH)*8):null;
 
-  document.getElementById("games").innerHTML = html;
-  document.getElementById("accuracy").innerHTML = accuracyHTML();
-  document.getElementById("refreshInfo").textContent = `最後更新時間：${new Date().toLocaleTimeString()} ｜ 官方 API + 盤口連線正常`;
+  let ouPick='資料不足（暫停分析）',ouConf=null,ou=[],detail=[];
+  let predA=null,predH=null,total=null;
+  const phase=seasonPhase(selectedDate);
+  const completeRecent=aRecent?.games===10&&hRecent?.games===10&&aRecent?.runs!=null&&hRecent?.runs!=null&&aRecent?.allowed!=null&&hRecent?.allowed!=null;
+  const completeStarters=ap?.era!=null&&hp?.era!=null&&Number.isFinite(Number(ap.era))&&Number.isFinite(Number(hp.era));
+  const completeHitting=aStats?.ops!=null&&hStats?.ops!=null&&Number.isFinite(Number(aStats.ops))&&Number.isFinite(Number(hStats.ops));
+  const completeBull=aBull?.complete&&hBull?.complete;
+  if(completeRecent&&completeStarters&&completeHitting&&completeBull){
+    const baseA=(Number(aRecent.runs)+Number(hRecent.allowed))/2;
+    const baseH=(Number(hRecent.runs)+Number(aRecent.allowed))/2;
+    const opsAdjA=Math.max(-0.40,Math.min(0.40,(Number(aStats.ops)-0.700)*1.0));
+    const opsAdjH=Math.max(-0.40,Math.min(0.40,(Number(hStats.ops)-0.700)*1.0));
+    const starterAdjA=Math.max(-0.40,Math.min(0.40,(4-Number(hp.era))*0.18));
+    const starterAdjH=Math.max(-0.40,Math.min(0.40,(4-Number(ap.era))*0.18));
+    const bullpenAdjA=Math.max(-0.35,Math.min(0.35,(Number(hBull.era)-4)*0.10));
+    const bullpenAdjH=Math.max(-0.35,Math.min(0.35,(Number(aBull.era)-4)*0.10));
+    // 賽季階段只微調「近期得失分」的影響，避免開季小樣本過度放大。
+    const phaseAdjA=(Number(aRecent.runs)-Number(aRecent.allowed))*phase.recentWeight*0.08;
+    const phaseAdjH=(Number(hRecent.runs)-Number(hRecent.allowed))*phase.recentWeight*0.08;
+    predA=Math.max(0,baseA+opsAdjA+starterAdjA+bullpenAdjA+phaseAdjA);
+    predH=Math.max(0,baseH+opsAdjH+starterAdjH+bullpenAdjH+phaseAdjH);
+    total=predA+predH;
+    ouPick=`${predA.toFixed(1)} - ${predH.toFixed(1)}（合計 ${total.toFixed(1)}）`;
+    ouConf=Math.round(Math.min(85,55+Math.abs(predA-predH)*4));
+    detail=[
+      `客隊基礎 ${baseA.toFixed(2)} =（客隊近10場場均得分 ${Number(aRecent.runs).toFixed(2)} + 主隊近10場場均失分 ${Number(hRecent.allowed).toFixed(2)}）÷ 2`,
+      `主隊基礎 ${baseH.toFixed(2)} =（主隊近10場場均得分 ${Number(hRecent.runs).toFixed(2)} + 客隊近10場場均失分 ${Number(aRecent.allowed).toFixed(2)}）÷ 2`,
+      `打擊修正：客 ${opsAdjA>=0?'+':''}${opsAdjA.toFixed(2)}（OPS ${aStats.ops}），主 ${opsAdjH>=0?'+':''}${opsAdjH.toFixed(2)}（OPS ${hStats.ops}）`,
+      `先發修正：客 ${starterAdjA>=0?'+':''}${starterAdjA.toFixed(2)}（對手先發 ERA ${hp.era}），主 ${starterAdjH>=0?'+':''}${starterAdjH.toFixed(2)}（對手先發 ERA ${ap.era}）`,
+      `牛棚修正：客 ${bullpenAdjA>=0?'+':''}${bullpenAdjA.toFixed(2)}（主隊牛棚 ERA ${hBull.era.toFixed(2)}），主 ${bullpenAdjH>=0?'+':''}${bullpenAdjH.toFixed(2)}（客隊牛棚 ERA ${aBull.era.toFixed(2)}）`,
+      `賽季階段：${phase.name}；近期狀態權重 ${Math.round(phase.recentWeight*100)}%（模型參數，非 MLB 官方數據）`,
+      `賽季階段修正：客 ${phaseAdjA>=0?'+':''}${phaseAdjA.toFixed(2)}、主 ${phaseAdjH>=0?'+':''}${phaseAdjH.toFixed(2)}`
+    ];
+    ou.push(`客隊預估 ${predA.toFixed(1)} 分、主隊預估 ${predH.toFixed(1)} 分`);
+  }else{
+    const missing=[];
+    if(!completeRecent)missing.push('最近10場得失分');
+    if(!completeHitting)missing.push('兩隊本季 OPS');
+    if(!completeStarters)missing.push('兩隊先發 ERA');
+    if(!completeBull)missing.push('兩隊近10場牛棚');
+    ou.push(`預估分數暫停：${missing.join('、')}未完整取得，不自行補值`);
+  }
+  return {reasons,winnerSide,winner,confidence,market:'',ouPick,ouConf,ou,line:null,weather,weatherReasons:[],detail,phase:phase.name,predA,predH,total};
+}
+function resultBadges(g,pred){
+  const state=g?.status?.abstractGameState||"Preview";
+  const a=Number(g.teams?.away?.score),h=Number(g.teams?.home?.score);
+  const hasScore=Number.isFinite(a)&&Number.isFinite(h);
+  if(pred.winnerSide==="tie") return `<div class="result-badges"></div>`;
+  if(state!=="Final"){
+    if(state!=="Live"||!hasScore) return `<div class="result-badges"></div>`;
+    const current= a>h?"away":h>a?"home":"tie";
+    let badge="";
+    if(current===pred.winnerSide) badge=`<span class="result-badge hit">🛣️ 在路上</span>`;
+    else if(current!=="tie") badge=`<span class="result-badge miss">🥲 有點可憐</span>`;
+    return `<div class="result-badges">${badge}</div><div class="result-note">目前比分：${a} - ${h} ｜ 比賽進行中，尚未計入當日準確度。</div>`;
+  }
+  if(!hasScore) return `<div class="result-badges"></div>`;
+  const actual=a>h?"away":h>a?"home":"tie";
+  const badge=actual===pred.winnerSide?`<span class="result-badge hit">✓ 勝負分析命中</span>`:`<span class="result-badge miss">✕ 勝負分析未命中</span>`;
+  return `<div class="result-badges">${badge}</div><div class="result-note">實際比分：${a} - ${h} ｜ 已完賽，正式計入當日準確度。</div>`;
+}
+function analysis(g,ps,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull){
+  let p=prediction(g,ps,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull);
+  if(g?.status?.abstractGameState==="Preview" && p.predA!=null && p.predH!=null){ savePredictionRecord({gamePk:g.gamePk,selectedDate,winnerSide:p.winnerSide,predA:p.predA,predH:p.predH,total:p.total,phase:p.phase,modelVersion:MODEL_VERSION,createdAt:Date.now(),settled:false}); }
+  updateAccuracy(g,p);
+  return `${resultBadges(g,p)}<strong>🏆 勝負分析（不讓分）：${p.winner}</strong> <span class="phase-tag">${esc(p.phase)}</span>${p.confidence!=null?`　參考信心 ${p.confidence}%`:''}<br>
+  <span class="muted">※ 勝負模型只使用 MLB 官方球隊／先發資料，不代入任何盤口。</span><br>
+  ${p.reasons.length?p.reasons.join("；")+"。":"目前沒有足夠的真實資料進行勝負判斷。"}<hr>
+  <strong>⚾ 預估分數</strong>${p.ouConf!=null?`　模型參考信心 ${p.ouConf}%`:''}<br>
+  ${p.ouPick!=="資料不足（暫停分析）" ? `<div class="score-prediction"><div><span class="muted">客隊預估</span><strong>${p.predA?.toFixed(1) ?? "-"} 分</strong></div><div class="score-dash">-</div><div><span class="muted">主隊預估</span><strong>${p.predH?.toFixed(1) ?? "-"} 分</strong></div><div class="score-total"><span class="muted">預估總分</span><strong>${p.total?.toFixed(1) ?? "-"}</strong></div></div>` : `<div class="muted">${p.ouPick}</div>`}
+  ${p.ou.join("；")}。<br>
+  ${p.detail?.length?`<div class="calc-detail"><b>📋 預估分數計算明細</b><ul>${p.detail.map(x=>`<li>${x}</li>`).join("")}</ul></div>`:""}
+  <span class="muted">預估分數不使用 Lottonavi、PlaySport、大小盤或盤口資料；使用已取得的 MLB 真實資料與模型計算值。賽季階段只作有限度的近期狀態權重修正；缺關鍵資料不補值。</span>`;
+}
+function dataHealth(g,ps,ap,hp,aStats,hStats,aRecent,hRecent,weather,aBull,hBull){
+  const checks=[
+    ["賽程",!!g?.gamePk],["先發投手",!!ap&&!!hp],["投手 ERA",!!ap&&!!hp&&ap.era!=null&&hp.era!=null],
+    ["球隊本季",!!aStats&&!!hStats],["近10場",!!aRecent&&!!hRecent&&aRecent.games===10&&hRecent.games===10],
+    ["近10場得/失分",!!aRecent&&!!hRecent&&aRecent.runs!=null&&hRecent.runs!=null&&aRecent.allowed!=null&&hRecent.allowed!=null],["近10場牛棚",!!aBull&&!!hBull&&aBull.complete&&hBull.complete]
+  ];
+  const ok=checks.filter(x=>x[1]).length;
+  return `<div class="section"><div class="section-title">資料完整度</div><div>${checks.map(([n,v])=>`<span class="tag" style="${v?'border-color:#b8e2c2;background:#e4f7e9;color:#147333':'border-color:#f2b8b5;background:#ffe7e7;color:#b42318'}">${v?'✓':'✕'} ${n}</span>`).join('')}</div><div class="muted" style="margin-top:7px">目前 ${ok}/${checks.length} 項主要資料已取得；✕ 不會以其他資料代替。</div></div>`;
 }
 
-document.getElementById("prev").onclick = () => { selectedDate = addDays(selectedDate, -1); render(); };
-document.getElementById("today").onclick = () => { selectedDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }); render(); };
-document.getElementById("next").onclick = () => { selectedDate = addDays(selectedDate, 1); render(); };
-
-render();
+function pitcherHTML(title,p,pstats){
+  if(!p)return `<div class="pitch"><div class="muted">${title}</div><div class="pitch-name">尚未公布</div></div>`;
+  return `<div class="pitch"><div class="muted">${title}</div><div class="pitch-name">${esc(p.fullName||p.name||"-")}</div>
+  <div class="muted">${p.pitchHand?.description||""}</div>
+  <div class="statgrid">
+  <div class="stat"><span>勝</span><b>${pstats?.wins??"-"}</b></div><div class="stat"><span>敗</span><b>${pstats?.losses??"-"}</b></div>
+  <div class="stat"><span>ERA</span><b>${pstats?.era??"-"}</b></div><div class="stat"><span>WHIP</span><b>${pstats?.whip??"-"}</b></div><div class="stat"><span>K</span><b>${pstats?.so??"-"}</b></div><div class="stat"><span>FIP</span><b>${pstats?.fip??"資料不足"}</b></div><div class="stat"><span>K/9</span><b>${pstats?.k9??"資料不足"}</b></div><div class="stat"><span>BB/9</span><b>${pstats?.bb9??"資料不足"}</b></div>
+  </div></div>`;
+}
+async function renderGame(g,ps,live,feedData){
+  let a=g.teams.away,h=g.teams.home,ac=code(a),hc=code(h),[status,cls]=gameStatus(g);
+  let ap=a.probablePitcher?await pitcher(a.probablePitcher.id):null,hp=h.probablePitcher?await pitcher(h.probablePitcher.id):null;
+  let aStats=await teamStats(a.team.id),hStats=await teamStats(h.team.id);
+  let [aRecent,hRecent,aBull,hBull]=await Promise.all([recentTeamStats(a.team.id),recentTeamStats(h.team.id),recentBullpenStats(a.team.id),recentBullpenStats(h.team.id)]);
+  let p=findPS(ps,g);
+  let ls=live?.[g.gamePk]||live?.[g.gamePk.toString()]||{};
+  let liveA=ls.r?.[0]??a.score??"-",liveH=ls.r?.[1]??h.score??"-";
+  let weather=extractWeather(feedData?.[g.gamePk]||feedData?.[String(g.gamePk)]);
+  let inning=ls.gs?.ss||ls.gs?.i?`第 ${ls.gs.i} 局 ${ls.gs.ss||""}`:"";
+  return `<article class="game-card">
+    <div class="game-top"><div><div class="game-time">${timeTW(g)}</div><div class="muted">${g.gamePk} · ${ac}@${hc}</div></div><div class="status ${cls}">${status}</div></div>
+    <div class="teams">
+      <div class="team away"><div><div class="team-name">${teamNames[ac]||a.team.name}</div><div class="team-sub">${ac} · 客場</div></div><img class="logo" src="${logo(a.team.id)}"></div>
+      <div><div class="score">${liveA} - ${liveH}</div><div class="inning">${esc(inning)}</div></div>
+      <div class="team home"><img class="logo" src="${logo(h.team.id)}"><div><div class="team-name">${teamNames[hc]||h.team.name}</div><div class="team-sub">${hc} · 主場</div></div></div>
+    </div>
+    <div class="section"><div class="section-title">先發投手</div><div class="two">${pitcherHTML("客隊先發",a.probablePitcher,ap)}${pitcherHTML("主隊先發",h.probablePitcher,hp)}</div></div>
+    <div class="section"><div class="section-title">團隊打擊</div><div class="two">
+      <div class="pitch"><b>${teamNames[ac]||ac}</b><div class="statgrid"><div class="stat"><span>AVG</span><b>${aStats.avg}</b></div><div class="stat"><span>OPS</span><b>${aStats.ops}</b></div><div class="stat"><span>R</span><b>${aStats.runs}</b></div></div></div>
+      <div class="pitch"><b>${teamNames[hc]||hc}</b><div class="statgrid"><div class="stat"><span>AVG</span><b>${hStats.avg}</b></div><div class="stat"><span>OPS</span><b>${hStats.ops}</b></div><div class="stat"><span>R</span><b>${hStats.runs}</b></div></div></div>
+    </div></div>
+    <div class="section"><div class="section-title">近期球隊打擊（MLB 官方最近10場）</div><div class="two">
+      <div class="pitch"><b>${teamNames[ac]||ac}</b><div class="statgrid"><div class="stat"><span>AVG</span><b>${aRecent.avg??"資料不足"}</b></div><div class="stat"><span>OPS</span><b>${aRecent.ops??"資料不足"}</b></div><div class="stat"><span>場均得分</span><b>${aRecent.runs!=null?aRecent.runs.toFixed(2):"資料不足"}</b></div><div class="stat"><span>場均失分</span><b>${aRecent.allowed!=null?aRecent.allowed.toFixed(2):"資料不足"}</b></div><div class="stat"><span>樣本</span><b>${aRecent.games}/10</b></div></div></div>
+      <div class="pitch"><b>${teamNames[hc]||hc}</b><div class="statgrid"><div class="stat"><span>AVG</span><b>${hRecent.avg??"資料不足"}</b></div><div class="stat"><span>OPS</span><b>${hRecent.ops??"資料不足"}</b></div><div class="stat"><span>場均得分</span><b>${hRecent.runs!=null?hRecent.runs.toFixed(2):"資料不足"}</b></div><div class="stat"><span>場均失分</span><b>${hRecent.allowed!=null?hRecent.allowed.toFixed(2):"資料不足"}</b></div><div class="stat"><span>樣本</span><b>${hRecent.games}/10</b></div></div></div>
+    </div><div class="muted" style="margin-top:7px">數據來源：MLB 官方 boxscore，僅統計最近10場已完成比賽；不足10場不補值。</div></div>
+    <div class="section"><div class="section-title">牛棚狀況（MLB 官方最近10場）</div><div class="two">
+      <div class="pitch"><b>${teamNames[ac]||ac}</b><div class="statgrid"><div class="stat"><span>ERA</span><b>${aBull.era!=null?aBull.era.toFixed(2):"資料不足"}</b></div><div class="stat"><span>WHIP</span><b>${aBull.whip!=null?aBull.whip.toFixed(2):"資料不足"}</b></div><div class="stat"><span>IP</span><b>${aBull.ip!=null?aBull.ip.toFixed(1):"資料不足"}</b></div><div class="stat"><span>樣本</span><b>${aBull.games}/10</b></div></div></div>
+      <div class="pitch"><b>${teamNames[hc]||hc}</b><div class="statgrid"><div class="stat"><span>ERA</span><b>${hBull.era!=null?hBull.era.toFixed(2):"資料不足"}</b></div><div class="stat"><span>WHIP</span><b>${hBull.whip!=null?hBull.whip.toFixed(2):"資料不足"}</b></div><div class="stat"><span>IP</span><b>${hBull.ip!=null?hBull.ip.toFixed(1):"資料不足"}</b></div><div class="stat"><span>樣本</span><b>${hBull.games}/10</b></div></div></div>
+    </div><div class="muted" style="margin-top:7px">牛棚統計排除該場先發投手，其餘實際登板投手合計；僅統計最近10場已完成比賽。</div></div>
+    <div class="section"><div class="section-title">比賽環境（MLB 官方 feed/live）</div><div class="two">
+      <div class="pitch"><b>開打溫度</b><div class="weather-value">${weather.temp!=null?esc(weather.temp)+"°F":"資料不足"}</div><div class="muted">官方 gameData.weather</div></div>
+      <div class="pitch"><b>風速／風向</b><div class="weather-value">${weather.windText?esc(weather.windText):(weather.wind!=null?esc(weather.wind)+" mph":"資料不足")}</div><div class="muted">官方 gameData.weather</div></div>
+      <div class="pitch"><b>天氣</b><div class="weather-value">${weather.condition?esc(weather.condition):"資料不足"}</div><div class="muted">官方 gameData.weather</div></div>
+    </div><div class="muted" style="margin-top:7px">只有 MLB feed/live 實際回傳的環境資料才會進入大小分評估；沒有資料不補值。</div></div>
+    ${dataHealth(g,p,ap,hp,aStats,hStats,aRecent,hRecent,weather,aBull,hBull)}
+    <div class="analysis">${analysis(g,p,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull)}</div>
+  </article>`;
+}
+async function load(){
+  const my=++version;if(timer){clearInterval(timer);timer=null}
+  setDateUI();document.getElementById("accuracy").innerHTML=accuracyHTML();document.getElementById("games").innerHTML=`<div class="loading">正在載入 ${fmtDate()}…<br><br>同步 MLB 官方資料</div>`;
+  try{
+    let games=await mlbSchedule(),ps=new Map();
+    if(my!==version)return;
+    document.getElementById("total").textContent=games.length;
+    let counts={preview:0,live:0,final:0};games.forEach(g=>{counts[gameStatus(g)[1]]++});
+    document.getElementById("preview").textContent=counts.preview;document.getElementById("live").textContent=counts.live;document.getElementById("final").textContent=counts.final;
+    if(!games.length){document.getElementById("games").innerHTML=`<div class="loading">這一天沒有抓到 MLB 賽程。</div>`;return}
+    let live=await liveJSON(games.map(g=>{let a=code(g.teams.away),h=code(g.teams.home);return `MLB_${psDate()}_${a}@${h}_${(g.gameDate||"").slice(11,16).replace(":","")}`}));
+    // 每場直接讀 MLB 官方 feed/live，取得 gameData.weather；不使用第三方天氣估算。
+    let feedList=await Promise.all(games.map(g=>feed(g)));
+    let feedData={};games.forEach((g,i)=>{if(feedList[i])feedData[g.gamePk]=feedList[i]});
+    let box=document.getElementById("games");box.innerHTML="";
+    for(const g of games){if(my!==version)break;box.insertAdjacentHTML("beforeend",await renderGame(g,ps,live,feedData))}
+    document.getElementById("accuracy").innerHTML=accuracyHTML();
+    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 每 15 秒更新比分`;
+    timer=setInterval(()=>refreshLive(games,my),15000);
+  }catch(e){
+    document.getElementById("games").innerHTML=`<div class="error">載入失敗：${esc(e.message)}<br><br>MLB 官方資料目前無法連線。<br>請稍後重新整理。</div>`;
+  }
+}
+async function refreshLive(games,my){
+  if(my!==version)return;
+  try{
+    let live=await liveJSON(games.map(g=>{let a=code(g.teams.away),h=code(g.teams.home);return `MLB_${psDate()}_${a}@${h}_${(g.gameDate||"").slice(11,16).replace(":","")}`}));
+    games.forEach(g=>{
+      let x=live[g.gamePk]||live[g.gamePk.toString()];if(!x)return;
+      let card=[...document.querySelectorAll(".game-card")].find(c=>c.textContent.includes(String(g.gamePk)));if(!card)return;
+      let nums=card.querySelector(".score"),st=x.r||[];if(nums&&st.length>=2)nums.textContent=`${st[0]} - ${st[1]}`;
+      let inn=card.querySelector(".inning");if(inn)inn.textContent=x.gs?.ss||"";
+      const isFinal=x.gs?.s==="F" || x.gs?.s==="Final";
+      const state=isFinal?"Final":((x.gs?.s==="L"||x.gs?.s==="Live")?"Live":g.status?.abstractGameState||"Preview");
+      const gg={...g,status:{...g.status,abstractGameState:state},teams:{...g.teams,away:{...g.teams.away,score:Number(st[0])},home:{...g.teams.home,score:Number(st[1])}}};
+      if(isFinal) settlePredictionRecord(gg);
+      const rec=loadPredictionRecords().find(r=>r.gamePk===g.gamePk);
+      const pred=rec?{winnerSide:rec.winnerSide}:null;
+      const badgeHost=card.querySelector(".analysis");
+      if(badgeHost&&pred){
+        const oldBadges=badgeHost.querySelector(".result-badges");
+        const html=resultBadges(gg,pred);
+        const tmp=document.createElement("div");tmp.innerHTML=html;
+        if(oldBadges){ oldBadges.replaceWith(tmp.firstElementChild||document.createElement("div")); if(tmp.lastElementChild&&tmp.lastElementChild.classList.contains("result-note")){ const note=badgeHost.querySelector(".result-note"); if(note)note.replaceWith(tmp.lastElementChild); else badgeHost.prepend(tmp.lastElementChild); } }
+        else badgeHost.insertAdjacentHTML("afterbegin",html);
+      }
+    });
+    document.getElementById("accuracy").innerHTML=accuracyHTML();
+    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 每 15 秒更新比分`;
+  }catch(e){}
+}
+document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};
+document.getElementById("next").onclick=()=>{selectedDate=addDays(selectedDate,1);load()};
+document.getElementById("today").onclick=()=>{selectedDate=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Taipei"});load()};
+load();
 </script>
 </body>
 </html>
