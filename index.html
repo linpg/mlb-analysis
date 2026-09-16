@@ -558,18 +558,66 @@ function updateAccuracy(g,p){
 }
 function accuracySummary(){
   const date=selectedDate;
+
+  /*
+   * 當日「預測正確／預測錯誤」直接以畫面上的比賽結果徽章為準：
+   * ⭕️命中 = 預測正確
+   * ❌未命中 = 預測錯誤
+   *
+   * 不使用 localStorage 裡的 winnerHit 來重新判斷。
+   * 特別注意：「🚘在路上」雖然目前使用 .hit class，
+   * 但它不是 ⭕️命中，所以不能列入命中數。
+   */
+  const cards=[...document.querySelectorAll(".game-card")];
+
+  let wins=0;
+  let misses=0;
+
+  cards.forEach(card=>{
+    const badges=[...card.querySelectorAll(".result-badge")];
+
+    badges.forEach(badge=>{
+      const text=badge.textContent.trim();
+
+      if(text.includes("⭕️命中")){
+        wins++;
+      }else if(text.includes("❌未命中")){
+        misses++;
+      }
+    });
+  });
+
+  const n=wins+misses;
+  const teamPct=n?wins/n*100:null;
+
+  /*
+   * 預測得分準確度仍沿用原本已保存的賽前預測資料。
+   * 這次只修改「預測正確／錯誤」的來源。
+   */
   const all=loadPredictionRecords().filter(x=>x.selectedDate===date && x.settled);
   const scored=all.filter(x=>Number.isFinite(x.awayError)&&Number.isFinite(x.homeError));
-  const wins=all.filter(x=>x.winnerHit).length;
-  const misses=all.length-wins;
-  const teamPct=all.length?wins/all.length*100:null;
-  const scoreMAE=scored.length?scored.reduce((s,x)=>s+((x.awayError+x.homeError)/2),0)/scored.length:null;
-  // 將每隊平均比分誤差換算成 0~100 的可讀指標；誤差每增加 1 分，準確度下降 10 個百分點。
-  const scorePct=scoreMAE==null?null:Math.max(0,Math.min(100,100-scoreMAE*10));
-  const finalGamesToday=[...new Set(all.map(x=>x.gamePk))].length;
+
+  const scoreMAE=scored.length
+    ?scored.reduce((s,x)=>s+((x.awayError+x.homeError)/2),0)/scored.length
+    :null;
+
+  const scorePct=scoreMAE==null
+    ?null
+    :Math.max(0,Math.min(100,100-scoreMAE*10));
+
   const storedToday=loadPredictionRecords().filter(x=>x.selectedDate===date);
   const unscoredFinal=storedToday.filter(x=>x.settled===false).length;
-  return {n:all.length,wins,misses,teamPct,scorePct,scoredN:scored.length,storedN:storedToday.length,unscoredFinal};
+
+  return {
+    n,
+    wins,
+    misses,
+    teamPct,
+    scorePct,
+    scoredN:scored.length,
+    storedN:storedToday.length,
+    unscoredFinal
+  };
 }
 function accuracyHTML(){
   const a=accuracySummary();
@@ -761,7 +809,16 @@ async function renderGame(g,ps,live,feedData){
 }
 async function load(){
   const my=++version;if(timer){clearInterval(timer);timer=null}
-  setDateUI();document.getElementById("accuracy").innerHTML=accuracyHTML();document.getElementById("games").innerHTML=`<div class="loading">正在載入 ${fmtDate()}…<br><br>同步 MLB 官方資料</div>`;
+
+  /*
+   * 修正：
+   * 不在比賽卡片建立前呼叫 accuracyHTML()。
+   * 因為 accuracySummary() 現在是直接讀取畫面上的
+   * ⭕️命中 / ❌未命中 徽章。
+   */
+  setDateUI();
+  document.getElementById("games").innerHTML=`<div class="loading">正在載入 ${fmtDate()}…<br><br>同步 MLB 官方資料</div>`;
+
   try{
     let games=await mlbSchedule(),ps=new Map();
     if(my!==version)return;
@@ -775,7 +832,13 @@ async function load(){
     let feedData={};games.forEach((g,i)=>{if(feedList[i])feedData[g.gamePk]=feedList[i]});
     let box=document.getElementById("games");box.innerHTML="";
     for(const g of games){if(my!==version)break;box.insertAdjacentHTML("beforeend",await renderGame(g,ps,live,feedData))}
+    
+    /*
+     * 所有 game-card 建立完成後，再計算當日準確度。
+     * accuracySummary() 此時才能抓到 ⭕️命中 / ❌未命中。
+     */
     document.getElementById("accuracy").innerHTML=accuracyHTML();
+
     document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 每 15 秒更新比分`;
     timer=setInterval(()=>refreshLive(games,my),15000);
   }catch(e){
