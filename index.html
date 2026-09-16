@@ -571,11 +571,24 @@ function savePredictionRecord(rec){
     const i=all.findIndex(x=>x.gamePk===rec.gamePk);
     let saved;
     if(i>=0){
-      // 一旦保存過賽前預測，不用之後重新計算的版本覆蓋原始預測。
-      all[i]={...all[i],...rec, predA:all[i].predA, predH:all[i].predH, winnerSide:all[i].winnerSide, createdAt:all[i].createdAt};
+      // 已保存的賽前預測只補缺少的欄位，不讓後續重新計算覆蓋原始預測或完賽結果。
+      all[i]={...all[i],...rec,
+        predA:all[i].predA,
+        predH:all[i].predH,
+        winnerSide:all[i].winnerSide,
+        createdAt:all[i].createdAt,
+        confidence:all[i].confidence!=null?all[i].confidence:rec.confidence,
+        settled:all[i].settled===true?true:rec.settled,
+        actualWinner:all[i].actualWinner||rec.actualWinner||"",
+        actualAway:all[i].actualAway??rec.actualAway,
+        actualHome:all[i].actualHome??rec.actualHome,
+        winnerHit:all[i].winnerHit??rec.winnerHit,
+        settledAt:all[i].settledAt||rec.settledAt||""
+      };
       saved=all[i];
     }else{all.push(rec);saved=rec;}
     localStorage.setItem(PRED_STORE_KEY,JSON.stringify(all.slice(-2000)));
+    // 只把「勝負分析」的 confidence（p.confidence）同步到 Google Sheets。
     syncPredictionRecordToCloud(saved);
   }catch{}
 }
