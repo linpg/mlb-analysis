@@ -668,13 +668,13 @@ function resultBadges(g,pred){
     if(state!=="Live"||!hasScore) return `<div class="result-badges"></div>`;
     const current= a>h?"away":h>a?"home":"tie";
     let badge="";
-    if(current===pred.winnerSide) badge=`<span class="result-badge hit"> ❤️ 在路上 ❤️ </span>`;
-    else if(current!=="tie") badge=`<span class="result-badge miss"> 可憐阿 😱 </span>`;
+    if(current===pred.winnerSide) badge=`<span class="result-badge hit"> 🚘在路上</span>`;
+    else if(current!=="tie") badge=`<span class="result-badge miss">🧟‍♂️🧟‍♂️🧟‍♂️🧟‍♂️ 可憐</span>`;
     return `<div class="result-badges">${badge}</div><div class="result-note">目前比分：${a} - ${h} ｜ 比賽進行中，尚未計入當日準確度。</div>`;
   }
   if(!hasScore) return `<div class="result-badges"></div>`;
   const actual=a>h?"away":h>a?"home":"tie";
-  const badge=actual===pred.winnerSide?`<span class="result-badge hit"> ✅ 勝負分析命中</span>`:`<span class="result-badge miss"> ☠️ 勝負分析未命中 ☠️ </span>`;
+  const badge=actual===pred.winnerSide?`<span class="result-badge hit">⭕️命中</span>`:`<span class="result-badge miss">❌未命中</span>`;
   return `<div class="result-badges">${badge}</div><div class="result-note">實際比分：${a} - ${h} ｜ 已完賽，正式計入當日準確度。</div>`;
 }
 function toggleGameDetails(btn){
