@@ -852,9 +852,12 @@ function battingAvgValue(v){
    如果官方尚未公布，回傳空陣列，不自行猜測。
 */
 function officialLineup(feedData,side){
-  const players=feedData?.liveData?.boxscore?.teams?.[side]?.players||{};
-  
-  const list=Object.values(players)
+  const team=feedData?.liveData?.boxscore?.teams?.[side]||{};
+  const players=team.players||{};
+
+  /* MLB 官方 feed 公布打線後，通常可由 players 的 battingOrder 取得。
+     若該欄位尚未同步，改用官方 batters 陣列依序讀取；不使用第三方資料。 */
+  let list=Object.values(players)
     .filter(p=>p?.battingOrder!=null)
     .map(p=>({
       order:Number(p.battingOrder),
@@ -865,6 +868,25 @@ function officialLineup(feedData,side){
     }))
     .filter(p=>p.id&&Number.isFinite(p.order))
     .sort((a,b)=>a.order-b.order);
+
+  if(list.length<9 && Array.isArray(team.batters)){
+    const existing=new Set(list.map(x=>x.id));
+    for(let i=0;i<team.batters.length;i++){
+      const id=Number(team.batters[i]);
+      if(!id||existing.has(id))continue;
+      const p=players[`ID${id}`]||players[id]||Object.values(players).find(x=>Number(x?.person?.id)===id);
+      if(!p?.person?.id)continue;
+      list.push({
+        order:(i+1)*100,
+        id:p.person.id,
+        name:p.person.fullName||"-",
+        position:p.position?.abbreviation||p.position?.name||"-",
+        battingSide:p.bats?.code||p.bats?.description||"-"
+      });
+      existing.add(id);
+    }
+    list.sort((a,b)=>a.order-b.order);
+  }
 
   return list.slice(0,9);
 }
@@ -1887,27 +1909,55 @@ async function load(){
 async function refreshLive(games,my){
   if(my!==version)return;
   try{
-    let live={};
-    games.forEach(g=>{
-      let x=live[g.gamePk]||live[g.gamePk.toString()];if(!x)return;
-      let card=[...document.querySelectorAll(".game-card")].find(c=>c.textContent.includes(String(g.gamePk)));if(!card)return;
-      let nums=card.querySelector(".score"),st=x.r||[];if(nums&&st.length>=2)nums.textContent=`${st[0]} - ${st[1]}`;
-      let inn=card.querySelector(".inning");if(inn)inn.textContent=x.gs?.ss||"";
-      const isFinal=x.gs?.s==="F" || x.gs?.s==="Final";
-      const state=isFinal?"Final":((x.gs?.s==="L"||x.gs?.s==="Live")?"Live":g.status?.abstractGameState||"Preview");
-      const gg={...g,status:{...g.status,abstractGameState:state},teams:{...g.teams,away:{...g.teams.away,score:Number(st[0])},home:{...g.teams.home,score:Number(st[1])}}};
-      if(isFinal) settlePredictionRecord(gg);
-      const rec=loadPredictionRecords().find(r=>r.gamePk===g.gamePk);
-      const pred=rec?{winnerSide:rec.winnerSide}:null;
-      const badgeHost=card.querySelector(".analysis");
-      if(badgeHost&&pred){
-        const oldBadges=badgeHost.querySelector(".result-badges");
-        const html=resultBadges(gg,pred);
-        const tmp=document.createElement("div");tmp.innerHTML=html;
-        if(oldBadges){ oldBadges.replaceWith(tmp.firstElementChild||document.createElement("div")); if(tmp.lastElementChild&&tmp.lastElementChild.classList.contains("result-note")){ const note=badgeHost.querySelector(".result-note"); if(note)note.replaceWith(tmp.lastElementChild); else badgeHost.prepend(tmp.lastElementChild); } }
-        else badgeHost.insertAdjacentHTML("afterbegin",html);
+    /* 每 15 秒重新讀 MLB 官方 feed/live。
+       這不只更新比分，也會抓到賽前稍後才公布的官方先發打線。 */
+    const feedList=await Promise.all(games.map(g=>feed(g)));
+    if(my!==version)return;
+
+    const feedData={};
+    const refreshed=[];
+
+    games.forEach((g,i)=>{
+      const fd=feedList[i];
+      if(fd)feedData[g.gamePk]=fd;
+      const status=fd?.gameData?.status||{};
+      const linescore=fd?.liveData?.linescore||{};
+      const awayScore=Number.isFinite(Number(linescore?.teams?.away?.runs))?Number(linescore.teams.away.runs):g.teams?.away?.score;
+      const homeScore=Number.isFinite(Number(linescore?.teams?.home?.runs))?Number(linescore.teams.home.runs):g.teams?.home?.score;
+      refreshed.push({
+        ...g,
+        status:{...g.status,abstractGameState:status.abstractGameState||g.status?.abstractGameState,detailedState:status.detailedState||g.status?.detailedState},
+        teams:{...g.teams,away:{...g.teams.away,score:awayScore},home:{...g.teams.home,score:homeScore}}
+      });
+    });
+
+    const box=document.getElementById("games");
+    if(!box)return;
+
+    const openPk=new Set([...document.querySelectorAll(".game-card")]
+      .filter(card=>card.querySelector(".game-details.open"))
+      .map(card=>{
+        const m=card.querySelector(".game-top .muted")?.textContent?.match(/(\d+)/);
+        return m?m[1]:null;
+      }).filter(Boolean));
+
+    let html="";
+    for(const g of refreshed){
+      if(my!==version)break;
+      html+=await renderGame(g,{},feedData);
+    }
+    if(my!==version)return;
+    box.innerHTML=html;
+
+    [...document.querySelectorAll(".game-card")].forEach(card=>{
+      const m=card.querySelector(".game-top .muted")?.textContent?.match(/(\d+)/);
+      if(m&&openPk.has(m[1])){
+        const btn=card.querySelector(".detail-toggle");
+        const details=card.querySelector(".game-details");
+        if(btn&&details){details.classList.add("open");btn.textContent="▲ 收起詳細資料";}
       }
     });
+
     document.getElementById("accuracy").innerHTML=accuracyHTML();
     document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 台灣時間 ｜ 每 15 秒更新比分`;
   }catch(e){}
