@@ -1,0 +1,46 @@
+name: Fix Taiwan time display
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-taiwan-time.yml'
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Force all game times to Taiwan time
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = '''function timeTW(g){try{return new Intl.DateTimeFormat("zh-TW",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Taipei"}).format(new Date(g.gameDate))}catch{return "--:--"}}'''
+          new = '''function timeTW(g){
+            try{
+              const dt=new Date(g?.gameDate);
+              if(Number.isNaN(dt.getTime()))return "--:--";
+              return new Intl.DateTimeFormat("zh-TW",{
+                timeZone:"Asia/Taipei",
+                hour:"2-digit",
+                minute:"2-digit",
+                hourCycle:"h23"
+              }).format(dt);
+            }catch{return "--:--"}
+          }'''
+          if old not in s:
+              raise SystemExit('target timeTW function not found')
+          s=s.replace(old,new,1)
+          s=s.replace('MLB 官方賽程`;', 'MLB 官方賽程／台灣時間`;', 1)
+          s=s.replace('MLB 官方資料 ｜ 每 15 秒更新比分', 'MLB 官方資料 ｜ 台灣時間 ｜ 每 15 秒更新比分')
+          p.write_text(s,encoding='utf-8')
+          PY
+          rm -f .github/workflows/fix-taiwan-time.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html .github/workflows/fix-taiwan-time.yml
+          git commit -m 'Display MLB game times in Taiwan time'
+          git push
