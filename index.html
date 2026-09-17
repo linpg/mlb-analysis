@@ -132,7 +132,7 @@ async function teamStats(id){
   let season=new Date().getFullYear();
   let d=await json(`${MLB_API}/teams/${id}/stats?stats=season&group=hitting&season=${season}`).catch(()=>null);
   let s=d?.stats?.[0]?.splits?.[0]?.stat||{};
-  let v={avg:s.avg??null,ops:s.ops??null,runs:s.runs??null,games:s.gamesPlayed??null,obp:s.obp??null,slg:s.slg??null,source:"MLB 官方本季"};
+  let v={avg:s.avg??null,ops:s.ops??null,runs:s.runs??null,games:s.gamesPlayed??null,gamesPlayed:s.gamesPlayed??null,obp:s.obp??null,slg:s.slg??null,source:"MLB 官方本季"};
   teamCache.set(key,v);return v;
 }
 
@@ -434,12 +434,13 @@ function clamp(v,min,max){
 
 /* MLB 打線攻擊力 */
 function lineupAttackScore(hitterData){
-  if(!hitterData?.length) return null;
+  const hitters=Array.isArray(hitterData)?hitterData:(hitterData?.hitters||[]);
+  if(!hitters.length) return null;
 
   let total=0;
   let count=0;
 
-  for(const h of hitterData){
+  for(const h of hitters){
     if(!h)continue;
 
     const season=h.season||{};
@@ -596,28 +597,14 @@ function bullpenScore(bullpen){
    只對模型的總得分環境做有限度調整。 */
 function environmentScore(weather){
   if(!weather)return 1;
-
   let factor=1;
-
-  const temp=num(weather.temp,NaN);
-  const wind=num(weather.wind,NaN);
-
-  /* 溫度：
-     過低通常不利飛行距離；
-     高溫可能提高得分環境。
-     只做很小幅度調整。 */
-  if(Number.isFinite(temp)){
-    if(temp<45)factor*=0.97;
-    else if(temp>=85)factor*=1.03;
-  }
-
-  /* 強風只在方向資料可用時才進一步處理。
-     目前 MLB feed 若只有風速，不猜測風向。 */
-  if(Number.isFinite(wind) && wind>=20){
-    factor*=0.99;
-  }
-
-  return clamp(factor,0.94,1.06);
+  const temp=num(weather.temp,NaN), wind=num(weather.wind,NaN);
+  const condition=String(weather.condition||'').toLowerCase();
+  const windText=String(weather.windText||'').toLowerCase();
+  if(Number.isFinite(temp)){if(temp<45)factor*=0.97;else if(temp>=85)factor*=1.03;}
+  if(/rain|shower|drizzle|thunderstorm|雨/.test(condition))factor*=0.97;
+  if(Number.isFinite(wind)&&wind>=20){if(/\bout\b|blowing out|外吹/.test(windText))factor*=1.035;else if(/\bin\b|blowing in|內吹/.test(windText))factor*=0.965;else factor*=0.99;}
+  return clamp(factor,0.90,1.08);
 }
 
 
@@ -709,52 +696,24 @@ function calculateWinProbability(awayStrength,homeStrength){
 }
 
 
-/* 預期得分 */
-function projectedRuns({
-  teamStatsData,
-  recentData,
-  lineupData,
-  opposingPitcher,
-  opposingBullpen,
-  environment
-}){
-  const seasonRPG=num(teamStatsData?.runs,NaN)/
-                  Math.max(num(teamStatsData?.gamesPlayed,0),1);
-
-  const recentRPG=
-    num(recentData?.runs,NaN)/
-    Math.max(num(recentData?.games,0),1);
-
-  let base=[];
-
-  if(Number.isFinite(seasonRPG))base.push(seasonRPG);
-  if(Number.isFinite(recentRPG))base.push(recentRPG);
-
-  let runs=base.length
-    ? base.reduce((a,b)=>a+b,0)/base.length
-    : 4.5;
-
+/* 預期得分：本季 + 近10場 + 今日實際先發打線 + 對方先發 + 牛棚 + 環境。 */
+function projectedRuns({teamStatsData,recentData,lineupData,opposingPitcher,opposingBullpen,environment,isHome}){
+  const seasonRPG=Number(teamStatsData?.runs)/Math.max(Number(teamStatsData?.games)||1,1);
+  const recentRPG=Number(recentData?.runs)/Math.max(Number(recentData?.games)||1,1);
+  const bases=[];
+  if(Number.isFinite(seasonRPG))bases.push({v:seasonRPG,w:0.45});
+  if(Number.isFinite(recentRPG))bases.push({v:recentRPG,w:0.35});
+  let runs=bases.length?bases.reduce((x,y)=>x+y.v*y.w,0)/bases.reduce((x,y)=>x+y.w,0):4.5;
   const lineupOPS=lineupAttackScore(lineupData);
-
-  if(lineupOPS!=null){
-    runs*=normalizeOPS(lineupOPS);
-  }
-
-  const pitcher=combinedPitcherScore(opposingPitcher);
-
-  if(pitcher!=null){
-    runs*=clamp(1/Math.max(pitcher,0.70),0.78,1.25);
-  }
-
+  if(Number.isFinite(lineupOPS))runs*=clamp(1+((lineupOPS-0.750)/0.750)*0.20,0.90,1.12);
+  const starter=combinedPitcherScore(opposingPitcher);
+  if(starter!=null)runs*=clamp(1/Math.max(starter,0.70),0.82,1.20);
   const bullpen=bullpenScore(opposingBullpen);
-
-  runs*=clamp(1/bullpen,0.88,1.15);
-
+  if(Number.isFinite(bullpen))runs*=clamp(1/Math.max(bullpen,0.75),0.90,1.10);
   runs*=environmentScore(environment);
-
-  return clamp(runs,1.5,9.5);
+  if(isHome)runs*=1.025;
+  return clamp(runs,1.5,9.0);
 }
-
 
 /* 完整官方模型 */
 function buildOfficialPredictionModel({
@@ -800,7 +759,8 @@ function buildOfficialPredictionModel({
     lineupData:awayLineup,
     opposingPitcher:homePitcher,
     opposingBullpen:homeBullpen,
-    environment:weather
+    environment:weather,
+    isHome:false
   });
 
   const homeRuns=projectedRuns({
@@ -809,7 +769,8 @@ function buildOfficialPredictionModel({
     lineupData:homeLineup,
     opposingPitcher:awayPitcher,
     opposingBullpen:awayBullpen,
-    environment:weather
+    environment:weather,
+    isHome:true
   });
 
   return {
@@ -1505,193 +1466,20 @@ async function renderGame(g,live,feedData){
     hc=code(h),
     [status,cls]=gameStatus(g);
 
-  function officialAnalysisHTML(
-  g,
-  model,
-  away,
-  home,
-  awayPitcher,
-  homePitcher,
-  awayLineup,
-  homeLineup,
-  weather
-){
-  if(!model){
-    return `<div class="section">
-      <div class="section-title">勝負分析</div>
-      <div class="muted">MLB 官方資料不足，暫時無法建立完整模型。</div>
-    </div>`;
-  }
-
-  const awayPct=Math.round(model.awayWin*100);
-  const homePct=Math.round(model.homeWin*100);
-
-  const awayRuns=Number(model.awayRuns||0);
-  const homeRuns=Number(model.homeRuns||0);
-
-  const total=model.totalRuns;
-
-  const pickAway=model.awayWin>=model.homeWin;
-
-  /*
-    Confidence 不直接等於勝率。
-    以兩隊模型差距產生保守信心度。
-  */
+  function officialAnalysisHTML(g,model,away,home,awayPitcher,homePitcher,awayLineup,homeLineup,weather){
+  if(!model)return `<div class="section"><div class="section-title">勝負分析</div><div class="muted">MLB 官方資料不足，暫時無法建立完整模型。</div></div>`;
+  const awayPct=Math.round(model.awayWin*100),homePct=Math.round(model.homeWin*100);
+  const awayRuns=Number(model.awayRuns),homeRuns=Number(model.homeRuns),total=Number(model.totalRuns);
+  const winnerSide=model.awayWin>model.homeWin?'away':model.homeWin>model.awayWin?'home':'tie';
+  const winner=winnerSide==='away'?away:home;
   const gap=Math.abs(model.awayWin-model.homeWin);
-
-  const confidence=Math.round(
-    clamp(
-      50+gap*100*0.75,
-      50,
-      92
-    )
-  );
-
-  const winner=pickAway?away:home;
-
-  const awayName=teamNames[code(away)]||away.team?.name||"客隊";
-  const homeName=teamNames[code(home)]||home.team?.name||"主隊";
-
-  return `
-    <div class="section">
-      <div class="section-title">勝負分析</div>
-
-      <div class="prediction-box">
-
-        <div class="prediction-main">
-          <div class="muted">MLB 官方模型預測</div>
-
-          <div class="prediction-winner">
-            ${esc(teamNames[code(winner)]||winner.team?.name||"-")}
-          </div>
-
-          <div class="prediction-confidence">
-            模型信心 ${confidence}%
-          </div>
-        </div>
-
-        <div class="two">
-
-          <div class="pitch">
-            <b>${esc(awayName)}</b>
-
-            <div class="statgrid">
-              <div class="stat">
-                <span>勝率</span>
-                <b>${awayPct}%</b>
-              </div>
-
-              <div class="stat">
-                <span>預測得分</span>
-                <b>${awayRuns.toFixed(1)}</b>
-              </div>
-
-              <div class="stat">
-                <span>模型強度</span>
-                <b>${model.awayStrength.toFixed(2)}</b>
-              </div>
-            </div>
-          </div>
-
-          <div class="pitch">
-            <b>${esc(homeName)}</b>
-
-            <div class="statgrid">
-              <div class="stat">
-                <span>勝率</span>
-                <b>${homePct}%</b>
-              </div>
-
-              <div class="stat">
-                <span>預測得分</span>
-                <b>${homeRuns.toFixed(1)}</b>
-              </div>
-
-              <div class="stat">
-                <span>模型強度</span>
-                <b>${model.homeStrength.toFixed(2)}</b>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        <div class="score-prediction">
-          預測比分：
-          <b>${awayRuns.toFixed(1)} - ${homeRuns.toFixed(1)}</b>
-        </div>
-
-        <div class="muted" style="margin-top:8px">
-          預估總得分 ${Number(total||0).toFixed(1)}
-          ｜資料來源：MLB 官方
-        </div>
-
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">模型依據</div>
-
-      <div class="two">
-
-        <div class="pitch">
-          <b>客隊</b>
-          <div class="muted">
-            官方打線：
-            ${awayLineup?.length
-              ? `已取得 ${awayLineup.length} 名打者`
-              : "尚未公布"}
-          </div>
-
-          <div class="muted">
-            先發：
-            ${awayPitcher?.season?.era!=null
-              ? `ERA ${awayPitcher.season.era}`
-              : "資料不足"}
-          </div>
-
-          <div class="muted">
-            近10次先發：
-            ${awayPitcher?.recent10?.games
-              ? `${awayPitcher.recent10.games} 場`
-              : "資料不足"}
-          </div>
-        </div>
-
-        <div class="pitch">
-          <b>主隊</b>
-          <div class="muted">
-            官方打線：
-            ${homeLineup?.length
-              ? `已取得 ${homeLineup.length} 名打者`
-              : "尚未公布"}
-          </div>
-
-          <div class="muted">
-            先發：
-            ${homePitcher?.season?.era!=null
-              ? `ERA ${homePitcher.season.era}`
-              : "資料不足"}
-          </div>
-
-          <div class="muted">
-            近10次先發：
-            ${homePitcher?.recent10?.games
-              ? `${homePitcher.recent10.games} 場`
-              : "資料不足"}
-          </div>
-        </div>
-
-      </div>
-
-      <div class="muted" style="margin-top:7px">
-        模型同時參考官方打線、打者近期狀態、
-        左右投拆分、先發投手、近10次先發、
-        球隊近期攻擊、牛棚及比賽環境。
-      </div>
-    </div>
-  `;
+  const confidence=Math.round(clamp(50+gap*100*0.75,50,92));
+  const awayName=teamNames[code(away)]||away.team?.name||'客隊';
+  const homeName=teamNames[code(home)]||home.team?.name||'主隊';
+  const pred={winnerSide,confidence,predA:awayRuns,predH:homeRuns,total};
+  return `<div class="section"><div class="section-title">勝負分析</div>${resultBadges(g,pred)}<div class="prediction-box"><div class="prediction-main"><div class="muted">MLB 官方模型預測</div><div class="prediction-winner">${esc(teamNames[code(winner)]||winner.team?.name||'-')}</div><div class="prediction-confidence">模型信心 ${confidence}%</div></div><div class="two"><div class="pitch"><b>${esc(awayName)}</b><div class="statgrid"><div class="stat"><span>勝率</span><b>${awayPct}%</b></div><div class="stat"><span>預測得分</span><b>${awayRuns.toFixed(1)}</b></div><div class="stat"><span>模型強度</span><b>${model.awayStrength.toFixed(2)}</b></div></div></div><div class="pitch"><b>${esc(homeName)}</b><div class="statgrid"><div class="stat"><span>勝率</span><b>${homePct}%</b></div><div class="stat"><span>預測得分</span><b>${homeRuns.toFixed(1)}</b></div><div class="stat"><span>模型強度</span><b>${model.homeStrength.toFixed(2)}</b></div></div></div></div><div class="score-prediction"><div><span class="muted">客隊預估</span><strong>${awayRuns.toFixed(1)} 分</strong></div><div class="score-dash">-</div><div><span class="muted">主隊預估</span><strong>${homeRuns.toFixed(1)} 分</strong></div><div class="score-total"><span class="muted">預估總分</span><strong>${total.toFixed(1)}</strong></div></div><div class="muted" style="margin-top:8px">資料來源：MLB 官方；預測比分不使用任何盤口資料。</div></div></div><div class="section"><div class="section-title">模型依據</div><div class="muted">比分模型參考本季場均得分、最近10場場均得分、今日實際先發打線、對方先發、對方近10場牛棚與 MLB 官方比賽環境；缺少資料不以其他資料冒充。</div></div>`;
 }
+
 
 /* MLB 官方先發投手：球季 + 近10次先發 */
 let [ap,hp,aStats,hStats,aRecent,hRecent,aBull,hBull]=await Promise.all([
