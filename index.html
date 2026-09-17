@@ -53,7 +53,6 @@ SEA:"水手",STL:"紅雀",TB:"光芒",TEX:"遊騎兵",TOR:"藍鳥",WSH:"國民"
 };
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 function addDays(s,n){let d=new Date(s+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)}
-function psDate(){return selectedDate.replaceAll("-","")}
 function fmtDate(){return selectedDate.replaceAll("-","/")}
 function setDateUI(){
   document.getElementById("dateText").textContent=`🇹🇼 ${fmtDate()} ｜ MLB 官方賽程`;
@@ -1180,275 +1179,6 @@ function lineupSummary(hitterData){
     source:"MLB 官方今日實際打線"
   };
 }
-/* ---------------- PlaySport ----------------
-   GitHub Pages 本身無法穩定直接跨網域抓 PlaySport。
-   依序嘗試公開 CORS proxy；若 proxy 不可用，頁面仍保留 MLB 官方資料。
-*/
-async function fetchText(url){
-  const targets=[
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://corsproxy.io/?url=${encodeURIComponent(url)}`
-  ];
-  for(const u of targets){
-    try{let r=await fetch(u);if(r.ok){let x=await r.text();if(x.includes("PlaySport")||x.includes("先發投手")||x.includes("gamelist"))return x}}catch(e){}
-  }
-  throw Error("PlaySport proxy 無法連線");
-}
-function strip(s){return (s||"").replace(/\s+/g," ").trim()}
-function textBetween(text,label,nextLabels=[]){
-  let i=text.indexOf(label);if(i<0)return "";
-  let x=text.slice(i+label.length);
-  let end=x.length;
-  nextLabels.forEach(n=>{let j=x.indexOf(n);if(j>=0&&j<end)end=j});
-  return strip(x.slice(0,end)).slice(0,160);
-}
-function parsePercent(s){let m=String(s).match(/(\d+(?:\.\d+)?)\s*%/);return m?m[1]+"%":"-"}
-function parsePS(html){
-  const doc=new DOMParser().parseFromString(html,"text/html");
-  const map=new Map();
-  const names=Object.values(teamNames);
-  const codeByName={};Object.entries(teamNames).forEach(([k,v])=>codeByName[v]=k);
-  const clean=s=>strip(String(s||"")).replace(/\u00a0/g," ").replace(/[\t\r\n]+/g," ").replace(/\s+/g," ").trim();
-
-  function market(tx){
-    tx=clean(tx);
-    const spreadAway=(tx.match(/客\s*([+-]?\d+(?:\.\d+)?)\s*[,，@]\s*(\d+(?:\.\d+)?)/)||[]);
-    const spreadHome=(tx.match(/主\s*([+-]?\d+(?:\.\d+)?)\s*[,，@]\s*(\d+(?:\.\d+)?)/)||[]);
-    const mlAway=(tx.match(/(?:^|[\s|])客\s*(\d+(?:\.\d+)?)(?=\s|\||$)/)||[]);
-    const mlHome=(tx.match(/(?:^|[\s|])主\s*(\d+(?:\.\d+)?)(?=\s|\||$)/)||[]);
-    // 國際盤大小分（PlaySport「觀看預測比例」）格式：
-    // 「大7.5贏50%」、「大8輸50%」、「小7.5贏50%」等。
-    // 這一組才是我們要的國際盤大小分；不要拿運彩「大7.5, 1.82」覆蓋它。
-    const intlTotals=[...tx.matchAll(/(?:^|[\s|])([大小])\s*(\d+(?:\.\d+)?)\s*(?:(贏|輸|平)\s*)?(\d+(?:\.\d+)?)?\s*%/g)];
-    const intl= intlTotals[0] || null;
-    const intlPick=intl?intl[1]:null;
-    const intlLine=intl?+intl[2]:null;
-    const intlResult=intl?intl[3]||null:null;
-    const intlRate=intl&&intl[4]!=null?+intl[4]:null;
-
-    // 運彩盤的「大X, 賠率」只作為舊資料格式備援；如果已抓到國際盤，
-    // 絕對不能用運彩盤覆蓋 totalLine / overRate。
-    const totals=[...tx.matchAll(/(?:^|[\s|])([大小])\s*(\d+(?:\.\d+)?)\s*(?:[,，@]\s*|\s+)(\d+(?:\.\d+)?)(?=\s|\||$)/g)];
-    const ov=totals.find(x=>x[1]==="大"), un=totals.find(x=>x[1]==="小");
-    const line=intlLine!=null?intlLine:(ov?+ov[2]:(un?+un[2]:null));
-    return {
-      spread:`${spreadAway[1]?"客"+spreadAway[1]+" @"+spreadAway[2]:"-"} / ${spreadHome[1]?"主"+spreadHome[1]+" @"+spreadHome[2]:"-"}`,
-      spreadAway:spreadAway[1]?+spreadAway[1]:null,spreadAwayOdds:spreadAway[2]?+spreadAway[2]:null,
-      spreadHome:spreadHome[1]?+spreadHome[1]:null,spreadHomeOdds:spreadHome[2]?+spreadHome[2]:null,
-      moneyline:`${mlAway[1]?"客 @"+mlAway[1]:"-"} / ${mlHome[1]?"主 @"+mlHome[1]:"-"}`,
-      moneyAway:mlAway[1]?+mlAway[1]:null,moneyHome:mlHome[1]?+mlHome[1]:null,
-      totalLine:line,
-      totalPick:intlPick,
-      totalResult:intlResult,
-      overRate:intlPick==="大"&&intlRate!=null?intlRate:(intlPick==="小"&&intlRate!=null?100-intlRate:null),
-      totalRate:intlRate,
-      overOdds:intlLine!=null?null:(ov?+ov[3]:null),
-      underOdds:intlLine!=null?null:(un?+un[3]:null),
-      total:intlLine!=null?`${intlPick||"-"} ${intlLine}${intlResult?intlResult:""}${intlRate!=null?` ${intlRate}%`:""}`:(line!=null?`${line}（大 ${ov?ov[3]:"-"} / 小 ${un?un[3]:"-"}）`:"")
-    };
-  }
-
-  function addGame(away,home,tx,oid=""){
-    if(!away||!home||away===home)return;
-    const key=away+"@"+home;
-    tx=clean(tx);
-    const existing=map.get(key);
-    if(existing){
-      const mk=market(tx);
-      if(mk.totalLine!=null){
-        existing.totalLine=mk.totalLine; existing.overOdds=mk.overOdds; existing.underOdds=mk.underOdds; existing.total=mk.total;
-      }
-      if(mk.spreadAway!=null){existing.spreadAway=mk.spreadAway;existing.spreadAwayOdds=mk.spreadAwayOdds;existing.spreadHome=mk.spreadHome;existing.spreadHomeOdds=mk.spreadHomeOdds;existing.spread=mk.spread;}
-      if(mk.moneyAway!=null||mk.moneyHome!=null){existing.moneyAway=mk.moneyAway;existing.moneyHome=mk.moneyHome;existing.moneyline=mk.moneyline;}
-      if(tx.length>existing.text.length)existing.text=tx;
-      map.set(key,existing);
-      return;
-    }
-    const mk=market(tx);
-    const posA=tx.indexOf(away), posH=tx.indexOf(home);
-    const pitchers={};
-    [away,home].forEach((n,i)=>{
-      const pos=tx.indexOf(n);
-      const after=pos>=0?tx.slice(pos+n.length,pos+n.length+120):"";
-      const m=after.match(/^([A-Za-zÀ-ÿ.\-’' ]{2,40})/);
-      pitchers[i]=m?m[1].trim():"";
-    });
-    map.set(key,{oid:oid||key,awayName:away,homeName:home,awayCode:codeByName[away],homeCode:codeByName[home],text:tx,
-      pitching:`${pitchers[0]||""} / ${pitchers[1]||""}`,...mk,
-      over:"",record:"",homeAway:"",h2h:"",last10:"",vsR:"",vsL:"",avgRun:"",avgRun10:""});
-  }
-
-  // ① 優先使用完整賽事 DOM 區塊。
-  const teamAnchors=[...doc.querySelectorAll('a')].filter(a=>names.includes(clean(a.textContent)));
-  teamAnchors.forEach(a=>{
-    let node=a,best=null,bestScore=-999;
-    for(let up=0;up<14&&node;up++,node=node.parentElement){
-      const tx=clean(node.innerText||node.textContent||"");
-      const found=names.filter(n=>tx.includes(n));
-      if(found.length<2||tx.length>7000)continue;
-      let score=found.length*2-up*.2;
-      if(tx.includes("今日大小盤口"))score+=12;
-      if(/(?:大|小)\s*\d+(?:\.\d+)?\s*(?:[,，@]|\s+)\s*\d+(?:\.\d+)?/.test(tx))score+=10;
-      if(tx.includes("今日讓分盤口"))score+=4;
-      if(score>bestScore){best=node;bestScore=score;}
-      if(score>=26)break;
-    }
-    if(!best)return;
-    const tx=clean(best.innerText||best.textContent||"");
-    const found=[];names.forEach(n=>{if(tx.includes(n)&&!found.includes(n))found.push(n)});
-    if(found.length>=2)addGame(found[0],found[1],tx);
-  });
-
-  // ② 若①沒有把大小盤帶進同一個父層，改用頁面全文做「兩隊名附近視窗」補抓。
-  // 這是本次修正的重點：不再要求「隊名與大小盤必須位於同一個 DOM 父層」。
-  // PlaySport 把盤口放在 input.value / value 屬性裡，innerText 不一定會把它算進文字。
-  // 先把所有 input 的 value 真正轉成文字，再做隊伍／盤口配對。
-  const textDoc=doc.cloneNode(true);
-  textDoc.querySelectorAll("input").forEach(inp=>{
-    const v=inp.getAttribute("value") ?? inp.value ?? "";
-    if(v) inp.replaceWith(textDoc.createTextNode(" "+v+" "));
-  });
-  const bodyText=clean(textDoc.body?.innerText||textDoc.body?.textContent||"");
-  if(bodyText){
-    for(let i=0;i<names.length;i++)for(let j=0;j<names.length;j++){
-      if(i===j)continue;
-      const away=names[i],home=names[j];
-      const pa=bodyText.indexOf(away),ph=bodyText.indexOf(home,pa+away.length);
-      if(pa<0||ph<0||ph-pa>4500)continue;
-      const tx=bodyText.slice(pa,Math.min(bodyText.length,ph+1800));
-      // 國際盤大小格式可能是「大8贏50%／大8輸50%」，不一定帶賠率。
-      // 只有運彩盤才常見「大8.5, 1.82」，兩種格式都允許進入配對，
-      // 但 market() 會優先採用國際盤格式。
-      if(!/(?:大|小)\s*\d+(?:\.\d+)?\s*(?:(?:贏|輸|平)\s*\d+(?:\.\d+)?\s*%|(?:[,，@]|\s+)\s*\d+(?:\.\d+)?)/.test(tx))continue;
-      addGame(away,home,tx);
-    }
-  }
-
-  // ③ livescore 詳細頁：補齊過盤率、戰績、近況，以及可能單獨存在的大小盤。
-  doc.querySelectorAll('[data-oid]').forEach(el=>{
-    const oid=el.getAttribute('data-oid')||"",txt=clean(el.innerText||el.textContent||"");
-    if(!oid||!txt)return;
-    let obj=map.get(oid);
-    if(!obj){
-      const found=names.filter(n=>txt.includes(n));
-      if(found.length>=2){addGame(found[0],found[1],txt,oid);obj=map.get(found[0]+"@"+found[1]);}
-    }
-    if(!obj)return;
-    obj.text=obj.text||txt;
-    obj.pitching=obj.pitching||textBetween(txt,"先發投手",["團隊打擊","今日讓分盤口","戰績"]);
-    obj.batting=obj.batting||textBetween(txt,"團隊打擊",["今日讓分盤口","戰績"]);
-    obj.spreadRate=textBetween(txt,"讓分過盤率",["近十場讓分盤過盤率","今日大小盤口","戰績"]);
-    obj.spread10=textBetween(txt,"近十場讓分盤過盤率",["今日大小盤口","戰績"]);
-    obj.over=textBetween(txt,"大分過盤率",["戰績","主 / 客戰績"]);
-    obj.overRate=rateFromText(obj.over);
-    if(obj.overRate==null){
-      const om=txt.match(/大分(?:預測比例|預測|過盤率)?[^0-9]{0,20}(\d+(?:\.\d+)?)\s*%/);
-      if(om)obj.overRate=+om[1];
-    }
-    obj.record=textBetween(txt,"戰績",["主 / 客戰績","對戰紀錄"]);
-    obj.homeAway=textBetween(txt,"主 / 客戰績",["對戰紀錄","近十場"]);
-    obj.h2h=textBetween(txt,"對戰紀錄",["近十場","面對先發右投"]);
-    obj.last10=textBetween(txt,"近十場",["面對先發右投","面對先發左投"]);
-    obj.vsR=textBetween(txt,"面對先發右投",["面對先發左投","平均得 / 失分"]);
-    obj.vsL=textBetween(txt,"面對先發左投",["平均得 / 失分","近十場平均得 / 失分"]);
-    obj.avgRun=textBetween(txt,"平均得 / 失分",["近十場平均得 / 失分"]);
-    obj.avgRun10=textBetween(txt,"近十場平均得 / 失分",[]);
-    if(obj.totalLine==null){
-      const fallback=market(txt);
-      if(fallback.totalLine!=null){
-        obj.totalLine=fallback.totalLine;
-        // 只有沒有國際盤時才接受舊格式的運彩大小盤；不覆蓋已抓到的國際盤。
-        if(obj.overOdds==null)obj.overOdds=fallback.overOdds;
-        if(obj.underOdds==null)obj.underOdds=fallback.underOdds;
-        if(!obj.total)obj.total=fallback.total;
-      }
-    }
-    map.set(obj.awayName+"@"+obj.homeName,obj);
-  });
-  for(const obj of map.values()){
-    if(obj.overRate==null)obj.overRate=rateFromText(obj.over||obj.text||"");
-  }
-  return map;
-}
-
-async function playsport(){
-  const predictUrl=`${PSP}${psDate()}&sid=0`;
-  const liveUrl=`${PS}?gamedate=${psDate()}&mode=2`;
-  const [predictHtml,liveHtml]=await Promise.all([
-    fetchText(predictUrl).catch(()=>""),
-    fetchText(liveUrl).catch(()=>"")
-  ]);
-  let map=predictHtml?parsePS(predictHtml):new Map();
-  if(liveHtml){
-    let detail=parsePS(liveHtml);
-    for(const [k,v] of detail){
-      let hit=map.get(k);
-      if(hit){
-        // 合併 PlaySport 多來源資料時，絕不能用 null/空字串覆蓋已抓到的盤口。
-        // 預測頁通常有大小分，livescore 頁可能沒有；保留已存在的有效值。
-        const keepIfMissing=[
-          "totalLine","overOdds","underOdds","spreadAway","spreadAwayOdds",
-          "spreadHome","spreadHomeOdds","moneyAway","moneyHome","overRate",
-          "spreadRate","spread10","record","homeAway","h2h","last10",
-          "vsR","vsL","avgRun","avgRun10","text","pitching","batting"
-        ];
-        for(const [field,value] of Object.entries(v)){
-          const missing=value===null||value===undefined||value===""||value==="-";
-          const existingMissing=hit[field]===null||hit[field]===undefined||hit[field]===""||hit[field]==="-";
-          if(!missing || existingMissing){ hit[field]=value; }
-        }
-        // 大小分若已經抓到，重新組合顯示字串，避免被第二來源清空。
-        if(hit.totalLine!=null){
-          hit.total=`${hit.totalLine}（大 ${hit.overOdds??"-"} / 小 ${hit.underOdds??"-"}）`;
-        }
-      }else map.set(k,v);
-    }
-  }
-  return map;
-}
-async function liveJSON(oids){
-  return {};
-}
-function findPS(ps,g){
-  let a=code(g.teams?.away),h=code(g.teams?.home);
-  let an=teamNames[a]||g.teams?.away?.team?.name||"",hn=teamNames[h]||g.teams?.home?.team?.name||"";
-  for(let [k,v] of ps){
-    if(v.awayCode===a&&v.homeCode===h)return v;
-    if(v.awayName===an&&v.homeName===hn)return v;
-    if(k.includes(`${a}@${h}`)||k.includes(`${h}@${a}`))return v;
-  }
-  return null;
-}
-function val(x){return x&&x!=="-"?esc(x):"<span class='muted'>尚無資料</span>"}
-function scoreText(g){
-  let a=g.teams?.away?.score??"-",h=g.teams?.home?.score??"-";return `${a} - ${h}`;
-}
-function psTable(p){
-  if(!p)return `<div class="muted">PlaySport 預測盤口目前未取得。</div>`;
-  return `<div class="tablewrap"><table class="data-table">
-  <tr><th>國際盤讓分</th><th>國際盤不讓分</th><th>國際盤大小</th><th>讓分過盤</th><th>近10讓分</th><th>大分率</th></tr>
-  <tr><td>${val(p.spread)}</td><td>${val(p.moneyline)}</td><td>${val(p.total)}</td><td>${val(p.spreadRate)}</td><td>${val(p.spread10)}</td><td>${val(p.over)}</td></tr>
-  <tr><th>戰績</th><td colspan="2">${val(p.record)}</td><th>主/客</th><td colspan="2">${val(p.homeAway)}</td></tr>
-  <tr><th>對戰</th><td colspan="2">${val(p.h2h)}</td><th>近10</th><td colspan="2">${val(p.last10)}</td></tr>
-  <tr><th>vs 右投</th><td colspan="2">${val(p.vsR)}</td><th>vs 左投</th><td colspan="2">${val(p.vsL)}</td></tr>
-  <tr><th>平均得/失</th><td colspan="2">${val(p.avgRun)}</td><th>近10得/失</th><td colspan="2">${val(p.avgRun10)}</td></tr>
-  </table></div>`;
-}
-function nums(s){
-  return [...String(s||"").matchAll(/(?:^|[^\d])(\d+(?:\.\d+)?)(?=%|\s|$)/g)].map(m=>+m[1]);
-}
-function rateFromText(s){
-  let m=String(s||"").match(/(\d+(?:\.\d+)?)\s*%/);
-  return m?+m[1]:null;
-}
-function totalLine(s){
-  let m=String(s||"").match(/(?:大小|大分|小分|總分|盤口)?\s*([7-9](?:\.\d+)?|10(?:\.\d+)?|11(?:\.\d+)?|12(?:\.\d+)?)/);
-  return m?+m[1]:null;
-}
-function runValue(s){
-  let m=String(s||"").match(/(\d+(?:\.\d+)?)\s*(?:分|分\/場|R|Runs)?/);
-  return m?+m[1]:null;
-}
 const MODEL_VERSION="V2.0";
 const PRED_STORE_KEY="mlb_model_predictions_v2";
 const CLOUD_API="https://script.google.com/macros/s/AKfycbwQUlRdKkM-mjFw_56NBoEjdsM2ScYW0zVT8N9JnAW6_-XrN8frZuey068W0CQHPGootQ/exec";
@@ -1735,7 +1465,7 @@ function pitcherHTML(title,p,pstats){
   <div class="stat"><span>ERA</span><b>${pstats?.era??"-"}</b></div><div class="stat"><span>WHIP</span><b>${pstats?.whip??"-"}</b></div><div class="stat"><span>K</span><b>${pstats?.so??"-"}</b></div><div class="stat"><span>FIP</span><b>${pstats?.fip??"資料不足"}</b></div><div class="stat"><span>K/9</span><b>${pstats?.k9??"資料不足"}</b></div><div class="stat"><span>BB/9</span><b>${pstats?.bb9??"資料不足"}</b></div>
   </div></div>`;
 }
-async function renderGame(g,ps,live,feedData){
+async function renderGame(g,live,feedData){
   let a=g.teams.away,
     h=g.teams.home,
     ac=code(a),
@@ -1976,13 +1706,6 @@ const homeLineup=await buildOfficialHitterData(
   "home",
   homePitcherHand
 ).catch(()=>null);
- let p=findPS(ps,g);
-
-/*
-  PlaySport 資料僅暫時保留給舊畫面相容性。
-  新模型不再使用 p 的任何賠率、百分比或預測結果。
-*/
-
 const weather=
   extractWeather(
     feedData?.[g.gamePk]||
@@ -2131,18 +1854,18 @@ async function load(){
   const my=++version;if(timer){clearInterval(timer);timer=null}
   setDateUI();document.getElementById("accuracy").innerHTML=accuracyHTML();document.getElementById("games").innerHTML=`<div class="loading">正在載入 ${fmtDate()}…<br><br>同步 MLB 官方資料</div>`;
   try{
-    let games=await mlbSchedule(),ps=new Map();
+    let games=await mlbSchedule();
     if(my!==version)return;
     document.getElementById("total").textContent=games.length;
     let counts={preview:0,live:0,final:0};games.forEach(g=>{counts[gameStatus(g)[1]]++});
     document.getElementById("preview").textContent=counts.preview;document.getElementById("live").textContent=counts.live;document.getElementById("final").textContent=counts.final;
     if(!games.length){document.getElementById("games").innerHTML=`<div class="loading">這一天沒有抓到 MLB 賽程。</div>`;return}
-    let live=await liveJSON(games.map(g=>{let a=code(g.teams.away),h=code(g.teams.home);return `MLB_${psDate()}_${a}@${h}_${(g.gameDate||"").slice(11,16).replace(":","")}`}));
+    let live={};
     // 每場直接讀 MLB 官方 feed/live，取得 gameData.weather；不使用第三方天氣估算。
     let feedList=await Promise.all(games.map(g=>feed(g)));
     let feedData={};games.forEach((g,i)=>{if(feedList[i])feedData[g.gamePk]=feedList[i]});
     let box=document.getElementById("games");box.innerHTML="";
-    for(const g of games){if(my!==version)break;box.insertAdjacentHTML("beforeend",await renderGame(g,ps,live,feedData))}
+    for(const g of games){if(my!==version)break;box.insertAdjacentHTML("beforeend",await renderGame(g,live,feedData))}
     document.getElementById("accuracy").innerHTML=accuracyHTML();
     document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 每 15 秒更新比分`;
     timer=setInterval(()=>refreshLive(games,my),15000);
@@ -2153,7 +1876,7 @@ async function load(){
 async function refreshLive(games,my){
   if(my!==version)return;
   try{
-    let live=await liveJSON(games.map(g=>{let a=code(g.teams.away),h=code(g.teams.home);return `MLB_${psDate()}_${a}@${h}_${(g.gameDate||"").slice(11,16).replace(":","")}`}));
+    let live={};
     games.forEach(g=>{
       let x=live[g.gamePk]||live[g.gamePk.toString()];if(!x)return;
       let card=[...document.querySelectorAll(".game-card")].find(c=>c.textContent.includes(String(g.gamePk)));if(!card)return;
