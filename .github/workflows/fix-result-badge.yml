@@ -1,8 +1,5 @@
 name: Fix prediction result badge
-on:
-  push:
-    paths:
-      - 'fix-result-badge.trigger'
+on: push
 
 jobs:
   fix:
@@ -12,13 +9,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Patch result badge
+        shell: bash
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
           import re
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          new = r'''function resultBadges(g,pred){
+          new = '''function resultBadges(g,pred){
   const state=g?.status?.abstractGameState||"Preview";
   const a=Number(g?.teams?.away?.score),h=Number(g?.teams?.home?.score);
   const hasScore=Number.isFinite(a)&&Number.isFinite(h);
@@ -34,9 +32,7 @@ jobs:
   if(!hasScore) return `<div class="result-badges"><span class="result-badge pending">⏳ 已完賽，等待官方比分</span></div>`;
   const actual=a>h?"away":h>a?"home":"tie";
   const hit=actual===pred.winnerSide;
-  const badge=hit
-    ? `<span class="result-badge hit">✓ 勝負分析命中</span>`
-    : `<span class="result-badge miss">✕ 勝負分析未命中</span>`;
+  const badge=hit ? `<span class="result-badge hit">✓ 勝負分析命中</span>` : `<span class="result-badge miss">✕ 勝負分析未命中</span>`;
   return `<div class="result-badges">${badge}</div><div class="result-note">實際比分：${a} - ${h} ｜ 預測：${pred.winner} ｜ ${hit?"預測勝負正確，已計入命中":"預測勝負錯誤，已計入未命中"}。</div>`;
 }'''
           pattern = r'function resultBadges\(g,pred\)\{.*?\n\}\nfunction toggleGameDetails'
@@ -45,8 +41,6 @@ jobs:
               raise SystemExit('resultBadges function not found')
           p.write_text(s2, encoding='utf-8')
           PY
-      - name: Commit
-        run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
