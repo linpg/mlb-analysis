@@ -1718,7 +1718,7 @@ function analysis(g,ps,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull){
 }
 function dataHealth(g,ps,ap,hp,aStats,hStats,aRecent,hRecent,weather,aBull,hBull){
   const checks=[
-    ["賽程",!!g?.gamePk],["先發投手",!!ap&&!!hp],["投手 ERA",!!ap&&!!hp&&ap.era!=null&&hp.era!=null],
+    ["賽程",!!g?.gamePk],["先發投手",!!ap&&!!hp],["投手 ERA",!!ap?.season&&!!hp?.season&&ap.season.era!=null&&hp.season.era!=null],
     ["球隊本季",!!aStats&&!!hStats],["近10場",!!aRecent&&!!hRecent&&aRecent.games===10&&hRecent.games===10],
     ["近10場得/失分",!!aRecent&&!!hRecent&&aRecent.runs!=null&&hRecent.runs!=null&&aRecent.allowed!=null&&hRecent.allowed!=null],["近10場牛棚",!!aBull&&!!hBull&&aBull.complete&&hBull.complete]
   ];
@@ -2008,14 +2008,24 @@ const officialModel=buildOfficialPredictionModel({
   weather
 });
 
-  const officialPrediction={
+const officialPrediction={
   winner:officialModel
     ? (
-        officialModel.awayWin>=officialModel.homeWin
+        officialModel.awayWin>officialModel.homeWin
           ? ac
           : hc
       )
     : null,
+
+  winnerSide:officialModel
+    ? (
+        officialModel.awayWin>officialModel.homeWin
+          ? "away"
+          : officialModel.homeWin>officialModel.awayWin
+            ? "home"
+            : "tie"
+      )
+    : "tie",
 
   confidence:officialModel
     ? Math.round(
@@ -2034,8 +2044,44 @@ const officialModel=buildOfficialPredictionModel({
 
   totalRuns:officialModel?.totalRuns??null,
 
-  modelVersion:"MLB_OFFICIAL_V3"
+  modelVersion:MODEL_VERSION
 };
+
+/* 新 MLB 官方模型接回原本歷史紀錄系統。
+   savePredictionRecord() 本身不改，Google Sheets、
+   ConfidenceHistory、完賽結算也全部沿用原流程。 */
+if(
+  officialPrediction.winnerSide!=="tie" &&
+  officialPrediction.confidence!=null &&
+  officialPrediction.awayRuns!=null &&
+  officialPrediction.homeRuns!=null
+){
+  savePredictionRecord({
+    gamePk:g.gamePk,
+    selectedDate,
+    gameDate:g.gameDate,
+
+    away:teamNames[ac]||a.team?.name||ac,
+    home:teamNames[hc]||h.team?.name||hc,
+
+    predictedWinner:
+      officialPrediction.winnerSide==="away"
+        ? (teamNames[ac]||a.team?.name||ac)
+        : (teamNames[hc]||h.team?.name||hc),
+
+    winnerSide:officialPrediction.winnerSide,
+    confidence:officialPrediction.confidence,
+
+    predA:officialPrediction.awayRuns,
+    predH:officialPrediction.homeRuns,
+    total:officialPrediction.totalRuns,
+
+    phase:seasonPhase(selectedDate).name,
+    modelVersion:MODEL_VERSION,
+    createdAt:Date.now(),
+    settled:false
+  });
+}
   let ls=live?.[g.gamePk]||live?.[g.gamePk.toString()]||{};
   let liveA=ls.r?.[0]??a.score??"-",liveH=ls.r?.[1]??h.score??"-";
   let inning=ls.gs?.ss||ls.gs?.i?`第 ${ls.gs.i} 局 ${ls.gs.ss||""}`:"";
