@@ -1,0 +1,147 @@
+name: Add official MLB model data
+on:
+  push:
+    paths:
+      - '.github/workflows/add-official-model-data.yml'
+jobs:
+  enhance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index.html
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          marker='document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};'
+          if 'MLB_OFFICIAL_MODEL_DATA_V3' in s:
+              raise SystemExit('already patched')
+          if marker not in s:
+              raise SystemExit('marker not found')
+          patch=r'''/* MLB_OFFICIAL_MODEL_DATA_V3: only verified MLB Stats API data; original functions remain intact. */
+(function(){
+  const originalTeamStats=window.teamStats;
+  const originalRecentTeamStats=window.recentTeamStats;
+  const originalBuild=window.buildOfficialPredictionModel;
+  const splitCache=new Map();
+  const recentContextCache=new Map();
+  const toNum=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+  const limit=(v,a,b)=>Math.max(a,Math.min(b,v));
+  async function officialJson(url){try{return await json(url,12000)}catch(e){return null}}
+
+  async function officialTeamSplits(id){
+    const season=new Date().getFullYear();
+    const key=`official-splits-${id}-${season}`;
+    if(splitCache.has(key))return splitCache.get(key);
+    const [r,l]=await Promise.all([
+      officialJson(`${MLB_API}/teams/${id}/stats?stats=statSplits&group=hitting&season=${season}&sitCodes=vr`),
+      officialJson(`${MLB_API}/teams/${id}/stats?stats=statSplits&group=hitting&season=${season}&sitCodes=vl`)
+    ]);
+    const pick=d=>d?.stats?.[0]?.splits?.[0]?.stat||null;
+    const rs=pick(r),ls=pick(l);
+    const out={
+      vsRHP:{avg:toNum(rs?.avg),obp:toNum(rs?.obp),slg:toNum(rs?.slg),ops:toNum(rs?.ops)},
+      vsLHP:{avg:toNum(ls?.avg),obp:toNum(ls?.obp),slg:toNum(ls?.slg),ops:toNum(ls?.ops)},
+      source:'MLB 官方 Stats API statSplits'
+    };
+    splitCache.set(key,out);return out;
+  }
+
+  async function officialRecentContext(id){
+    const key=`official-context-${id}-${selectedDate}`;
+    if(recentContextCache.has(key))return recentContextCache.get(key);
+    const end=addDays(selectedDate,-1),begin=addDays(end,-35);
+    const d=await officialJson(`${MLB_API}/schedule?sportId=1&teamId=${id}&startDate=${begin}&endDate=${end}&hydrate=team`);
+    const games=(d?.dates||[]).flatMap(x=>x.games||[])
+      .filter(g=>g.status?.abstractGameState==='Final')
+      .sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate))
+      .slice(0,10);
+    let rf=0,ra=0,w=0;
+    for(const g of games){
+      const home=Number(g.teams?.home?.team?.id)===Number(id);
+      const own=toNum(home?g.teams?.home?.score:g.teams?.away?.score);
+      const opp=toNum(home?g.teams?.away?.score:g.teams?.home?.score);
+      if(own!=null&&opp!=null){rf+=own;ra+=opp;if(own>opp)w++;}
+    }
+    const last=games[0]?.gameDate?new Date(games[0].gameDate):null;
+    const today=new Date(`${selectedDate}T00:00:00+08:00`);
+    const restDays=last?Math.max(0,Math.floor((today-last)/86400000)-1):null;
+    const out={
+      last10RunDiff:games.length?(rf-ra)/games.length:null,
+      last10WinPct:games.length?w/games.length:null,
+      restDays,
+      gamesConsidered:games.length,
+      source:'MLB 官方 Schedule/賽果推導'
+    };
+    recentContextCache.set(key,out);return out;
+  }
+
+  window.teamStats=async function(id){
+    const base=await originalTeamStats(id);
+    const splits=await officialTeamSplits(id);
+    return {...base,splits};
+  };
+
+  window.recentTeamStats=async function(id){
+    const base=await originalRecentTeamStats(id);
+    const context=await officialRecentContext(id);
+    return {...base,officialContext:context};
+  };
+
+  window.buildOfficialPredictionModel=function(args){
+    const model=originalBuild(args);
+    const A=args.awayStats||{},H=args.homeStats||{};
+    const AR=args.awayRecent?.officialContext||{},HR=args.homeRecent?.officialContext||{};
+
+    function splitFactor(team){
+      const r=toNum(team.splits?.vsRHP?.ops),l=toNum(team.splits?.vsLHP?.ops);
+      if(r==null&&l==null)return 1;
+      const ops=r!=null&&l!=null?(r+l)/2:(r??l);
+      return limit(1+(ops-0.750)*0.12,0.97,1.03);
+    }
+    function contextFactor(ctx){
+      let f=1;
+      const diff=toNum(ctx.last10RunDiff);
+      const rest=toNum(ctx.restDays);
+      if(diff!=null)f*=limit(1+diff*0.006,0.97,1.03);
+      if(rest!=null&&rest<=0)f*=0.99;
+      else if(rest!=null&&rest>=3)f*=1.006;
+      return f;
+    }
+
+    model.awayStrength*=splitFactor(A)*contextFactor(AR);
+    model.homeStrength*=splitFactor(H)*contextFactor(HR);
+    const totalStrength=model.awayStrength+model.homeStrength;
+    if(totalStrength>0){
+      const p=model.awayStrength/totalStrength;
+      model.awayWin=limit(0.5+(p-0.5)*0.92,0.05,0.95);
+      model.homeWin=1-model.awayWin;
+    }
+
+    model.awayRuns=limit(model.awayRuns*splitFactor(A)*contextFactor(AR),1.5,9);
+    model.homeRuns=limit(model.homeRuns*splitFactor(H)*contextFactor(HR),1.5,9);
+    model.totalRuns=model.awayRuns+model.homeRuns;
+    model.officialEnhancement={
+      away:{vsRHP:A.splits?.vsRHP?.ops??null,vsLHP:A.splits?.vsLHP?.ops??null,runDiff10:AR.last10RunDiff,winPct10:AR.last10WinPct,restDays:AR.restDays},
+      home:{vsRHP:H.splits?.vsRHP?.ops??null,vsLHP:H.splits?.vsLHP?.ops??null,runDiff10:HR.last10RunDiff,winPct10:HR.last10WinPct,restDays:HR.restDays},
+      source:'MLB 官方 Stats API / Schedule'
+    };
+    return model;
+  };
+})();
+
+'''
+          s=s.replace(marker,patch+marker,1)
+          p.write_text(s)
+          PY
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git rm .github/workflows/add-official-model-data.yml
+          git commit -m 'feat: add verified MLB official model inputs'
+          git push
