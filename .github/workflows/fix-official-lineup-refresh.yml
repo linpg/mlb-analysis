@@ -1,0 +1,185 @@
+name: Fix MLB official lineup refresh
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch lineup and refresh logic
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          old_lineup = r'''function officialLineup(feedData,side){
+  const players=feedData?.liveData?.boxscore?.teams?.[side]?.players||{};
+  
+  const list=Object.values(players)
+    .filter(p=>p?.battingOrder!=null)
+    .map(p=>({
+      order:Number(p.battingOrder),
+      id:p.person?.id,
+      name:p.person?.fullName||"-",
+      position:p.position?.abbreviation||p.position?.name||"-",
+      battingSide:p.bats?.code||p.bats?.description||"-"
+    }))
+    .filter(p=>p.id&&Number.isFinite(p.order))
+    .sort((a,b)=>a.order-b.order);
+
+  return list.slice(0,9);
+}'''
+
+          new_lineup = r'''function officialLineup(feedData,side){
+  const team=feedData?.liveData?.boxscore?.teams?.[side]||{};
+  const players=team.players||{};
+
+  /* MLB 官方 feed 公布打線後，通常可由 players 的 battingOrder 取得。
+     若該欄位尚未同步，改用官方 batters 陣列依序讀取；不使用任何第三方資料。 */
+  let list=Object.values(players)
+    .filter(p=>p?.battingOrder!=null)
+    .map(p=>({
+      order:Number(p.battingOrder),
+      id:p.person?.id,
+      name:p.person?.fullName||"-",
+      position:p.position?.abbreviation||p.position?.name||"-",
+      battingSide:p.bats?.code||p.bats?.description||"-"
+    }))
+    .filter(p=>p.id&&Number.isFinite(p.order))
+    .sort((a,b)=>a.order-b.order);
+
+  if(list.length<9 && Array.isArray(team.batters)){
+    const existing=new Set(list.map(x=>x.id));
+    for(let i=0;i<team.batters.length;i++){
+      const id=Number(team.batters[i]);
+      if(!id||existing.has(id))continue;
+      const p=players[`ID${id}`]||players[id]||Object.values(players).find(x=>Number(x?.person?.id)===id);
+      if(!p?.person?.id)continue;
+      list.push({
+        order:(i+1)*100,
+        id:p.person.id,
+        name:p.person.fullName||"-",
+        position:p.position?.abbreviation||p.position?.name||"-",
+        battingSide:p.bats?.code||p.bats?.description||"-"
+      });
+      existing.add(id);
+    }
+    list.sort((a,b)=>a.order-b.order);
+  }
+
+  return list.slice(0,9);
+}'''
+
+          if old_lineup not in s:
+              raise SystemExit('officialLineup target not found')
+          s=s.replace(old_lineup,new_lineup,1)
+
+          start=s.find('async function refreshLive(games,my){')
+          if start<0:
+              raise SystemExit('refreshLive start not found')
+          end=s.find('\ndocument.getElementById("prev").onclick=',start)
+          if end<0:
+              raise SystemExit('refreshLive end marker not found')
+
+          new_refresh = r'''async function refreshLive(games,my){
+  if(my!==version)return;
+  try{
+    /* 每 15 秒重新讀 MLB 官方 feed/live。
+       這不只更新比分，也會抓到賽前稍後才公布的官方先發打線。 */
+    const feedList=await Promise.all(games.map(g=>feed(g)));
+    if(my!==version)return;
+
+    const feedData={};
+    const refreshed=[];
+
+    games.forEach((g,i)=>{
+      const fd=feedList[i];
+      if(fd)feedData[g.gamePk]=fd;
+
+      const status=fd?.gameData?.status||{};
+      const linescore=fd?.liveData?.linescore||{};
+      const awayScore=Number.isFinite(Number(linescore?.teams?.away?.runs))
+        ?Number(linescore.teams.away.runs)
+        :g.teams?.away?.score;
+      const homeScore=Number.isFinite(Number(linescore?.teams?.home?.runs))
+        ?Number(linescore.teams.home.runs)
+        :g.teams?.home?.score;
+
+      refreshed.push({
+        ...g,
+        status:{
+          ...g.status,
+          abstractGameState:status.abstractGameState||g.status?.abstractGameState,
+          detailedState:status.detailedState||g.status?.detailedState
+        },
+        teams:{
+          ...g.teams,
+          away:{...g.teams.away,score:awayScore},
+          home:{...g.teams.home,score:homeScore}
+        }
+      });
+    });
+
+    const box=document.getElementById("games");
+    if(!box)return;
+
+    /* 保留目前哪些比賽的詳細資料是展開狀態。 */
+    const openPk=new Set(
+      [...document.querySelectorAll(".game-card")]
+        .filter(card=>card.querySelector(".game-details.open"))
+        .map(card=>{
+          const m=card.querySelector(".game-top .muted")?.textContent?.match(/(\d+)/);
+          return m?m[1]:null;
+        })
+        .filter(Boolean)
+    );
+
+    let html="";
+    for(const g of refreshed){
+      if(my!==version)break;
+      html+=await renderGame(g,{},feedData);
+    }
+    if(my!==version)return;
+
+    box.innerHTML=html;
+
+    [...document.querySelectorAll(".game-card")].forEach(card=>{
+      const m=card.querySelector(".game-top .muted")?.textContent?.match(/(\d+)/);
+      if(m&&openPk.has(m[1])){
+        const btn=card.querySelector(".detail-toggle");
+        const details=card.querySelector(".game-details");
+        if(btn&&details){
+          details.classList.add("open");
+          btn.textContent="▲ 收起詳細資料";
+        }
+      }
+    });
+
+    document.getElementById("accuracy").innerHTML=accuracyHTML();
+    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 台灣時間 ｜ 每 15 秒更新比分`;
+  }catch(e){}
+}'''
+
+          s=s[:start]+new_refresh+s[end:]
+          p.write_text(s,encoding='utf-8')
+      - name: Remove one-time workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-official-lineup-refresh.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html .github/workflows/fix-official-lineup-refresh.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Refresh MLB official lineup data"
+          git push
