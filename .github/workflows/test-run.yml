@@ -16,6 +16,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import base64
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
           marker='document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};'
@@ -24,64 +25,7 @@ jobs:
               raise SystemExit(0)
           if marker not in s:
               raise SystemExit('marker not found')
-          patch=r'''/* MLB_OFFICIAL_MODEL_DATA_V4: verified MLB Stats API enhancement; existing model functions are preserved. */
-(function(){
-  const originalTeamStats=window.teamStats;
-  const originalRecentTeamStats=window.recentTeamStats;
-  const originalBuild=window.buildOfficialPredictionModel;
-  const splitCache=new Map();
-  const contextCache=new Map();
-  const num=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
-  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-  async function api(url){try{return await json(url,12000)}catch(e){return null}}
-  async function officialSplits(id){
-    const season=Number(String(selectedDate).slice(0,4))||new Date().getFullYear();
-    const key=`official-v4-splits-${id}-${season}`;
-    if(splitCache.has(key))return splitCache.get(key);
-    const [r,l]=await Promise.all([
-      api(`${MLB_API}/teams/${id}/stats?stats=statSplits&group=hitting&season=${season}&sitCodes=vr`),
-      api(`${MLB_API}/teams/${id}/stats?stats=statSplits&group=hitting&season=${season}&sitCodes=vl`)
-    ]);
-    const pick=d=>d?.stats?.[0]?.splits?.[0]?.stat||null;
-    const rs=pick(r),ls=pick(l);
-    const out={vsRHP:{avg:num(rs?.avg),obp:num(rs?.obp),slg:num(rs?.slg),ops:num(rs?.ops)},vsLHP:{avg:num(ls?.avg),obp:num(ls?.obp),slg:num(ls?.slg),ops:num(ls?.ops)},source:'MLB Stats API statSplits'};
-    splitCache.set(key,out);return out;
-  }
-  async function officialContext(id){
-    const key=`official-v4-context-${id}-${selectedDate}`;
-    if(contextCache.has(key))return contextCache.get(key);
-    const end=addDays(selectedDate,-1),begin=addDays(end,-35);
-    const d=await api(`${MLB_API}/schedule?sportId=1&teamId=${id}&startDate=${begin}&endDate=${end}&hydrate=team`);
-    const games=(d?.dates||[]).flatMap(x=>x.games||[]).filter(g=>g.status?.abstractGameState==='Final').sort((a,b)=>new Date(b.gameDate)-new Date(a.gameDate)).slice(0,10);
-    let rf=0,ra=0,w=0,n=0;
-    for(const g of games){
-      const home=Number(g.teams?.home?.team?.id)===Number(id);
-      const own=num(home?g.teams?.home?.score:g.teams?.away?.score);
-      const opp=num(home?g.teams?.away?.score:g.teams?.home?.score);
-      if(own!=null&&opp!=null){rf+=own;ra+=opp;if(own>opp)w++;n++;}
-    }
-    const last=games[0]?.gameDate?new Date(games[0].gameDate):null;
-    const today=new Date(`${selectedDate}T00:00:00+08:00`);
-    const restDays=last?Math.max(0,Math.floor((today-last)/86400000)-1):null;
-    const out={last10RunDiff:n?(rf-ra)/n:null,last10WinPct:n?w/n:null,restDays,gamesConsidered:n,source:'MLB Stats API Schedule'};
-    contextCache.set(key,out);return out;
-  }
-  window.teamStats=async function(id){const base=await originalTeamStats(id);return {...base,officialSplits:await officialSplits(id)};};
-  window.recentTeamStats=async function(id){const base=await originalRecentTeamStats(id);return {...base,officialContext:await officialContext(id)};};
-  window.buildOfficialPredictionModel=function(args){
-    const model=originalBuild(args);
-    const A=args.awayStats||{},H=args.homeStats||{},AR=args.awayRecent?.officialContext||{},HR=args.homeRecent?.officialContext||{};
-    const splitFactor=t=>{const r=num(t.officialSplits?.vsRHP?.ops),l=num(t.officialSplits?.vsLHP?.ops);if(r==null&&l==null)return 1;const ops=r!=null&&l!=null?(r+l)/2:(r??l);return clamp(1+(ops-0.750)*0.12,0.97,1.03);};
-    const contextFactor=c=>{let f=1;const diff=num(c.last10RunDiff),rest=num(c.restDays);if(diff!=null)f*=clamp(1+diff*0.006,0.97,1.03);if(rest!=null&&rest<=0)f*=0.99;else if(rest!=null&&rest>=3)f*=1.006;return f;};
-    model.awayStrength*=splitFactor(A)*contextFactor(AR);model.homeStrength*=splitFactor(H)*contextFactor(HR);
-    const totalStrength=model.awayStrength+model.homeStrength;
-    if(totalStrength>0){const p=model.awayStrength/totalStrength;model.awayWin=clamp(0.5+(p-0.5)*0.92,0.05,0.95);model.homeWin=1-model.awayWin;}
-    model.awayRuns=clamp(model.awayRuns*splitFactor(A)*contextFactor(AR),1.5,9);model.homeRuns=clamp(model.homeRuns*splitFactor(H)*contextFactor(HR),1.5,9);model.totalRuns=model.awayRuns+model.homeRuns;
-    model.officialEnhancement={away:{vsRHP:A.officialSplits?.vsRHP?.ops??null,vsLHP:A.officialSplits?.vsLHP?.ops??null,runDiff10:AR.last10RunDiff,winPct10:AR.last10WinPct,restDays:AR.restDays},home:{vsRHP:H.officialSplits?.vsRHP?.ops??null,vsLHP:H.officialSplits?.vsLHP?.ops??null,runDiff10:HR.last10RunDiff,winPct10:HR.last10WinPct,restDays:HR.restDays},source:'MLB Stats API / Schedule'};
-    return model;
-  };
-})();
-'''
+          patch=base64.b64decode('LyogTUxCX09GRklDSUFMX01PREVMX0RBVEFfVjQ6IHZlcmlmaWVkIE1MQiBTdGF0cyBBUEkgZW5oYW5jZW1lbnQ7IGV4aXN0aW5nIG1vZGVsIGZ1bmN0aW9ucyBhcmUgcHJlc2VydmVkLiAqLw0KKGZ1bmN0aW9uKCl7DQogIGNvbnN0IG9yaWdpbmFsVGVhbVN0YXRzPXdpbmRvdy50ZWFtU3RhdHM7DQogIGNvbnN0IG9yaWdpbmFsUmVjZW50VGVhbVN0YXRzPXdpbmRvdy5yZWNlbnRUZWFtU3RhdHM7DQogIGNvbnN0IG9yaWdpbmFsQnVpbGQ9d2luZG93LmJ1aWxkT2ZmaWNpYWxQcmVkaWN0aW9uTW9kZWw7DQogIGNvbnN0IHNwbGl0Q2FjaGU9bmV3IE1hcCgpOw0KICBjb25zdCBjb250ZXh0Q2FjaGU9bmV3IE1hcCgpOw0KICBjb25zdCBudW09dj0+e2NvbnN0IG49TnVtYmVyKHYpO3JldHVybiBOdW1iZXIuaXNGaW5pdGUobik/bjpudWxsfTsNCiAgY29uc3QgY2xhbXA9KHYsYSxiKT0+TWF0aC5tYXgoYSxNYXRoLm1pbihiLHYpKTsNCiAgYXN5bmMgZnVuY3Rpb24gYXBpKHVybCl7dHJ5e3JldHVybiBhd2FpdCBqc29uKHVybCwxMjAwMH1jYXRjaChlKXtyZXR1cm4gbnVsbH19DQogIGFzeW5jIGZ1bmN0aW9uIG9mZmljaWFsU3BsaXRzKGlkKXsNCiAgICBjb25zdCBzZWFzb249TnVtYmVyKFN0cmluZyhzZWxlY3RlZERhdGUpLnNsaWNlKDAsNCkpIHx8IG5ldyBEYXRlKCkuZ2V0RnVsbFllYXIoKTsNCiAgICBjb25zdCBrZXk9YG9mZmljaWFsLXY0LXNwbGl0cy0ke2lkfS0ke3NlYXNvbn19YDsNCiAgICBpZihzcGxpdENhY2hlLmhhcyhrZXkpKXJldHVybiBzcGxpdENhY2hlLmdldChrZXkpOw0KICAgIGNvbnN0IFtyLGxdPWF3YWl0IFByb21pc2UuYWxsKFsNCiAgICAgIGFwaShgJHtNTEJfQVBJfS90ZWFtcy8ke2lkfS9zdGF0cz9zdGF0cz1zdGF0U3BsaXRzJmdyb3VwPWhpdHRpbmcmc2Vhc29uPSR7c2Vhc29ufSZzaXRDb2Rlcz12cmApLA0KICAgICAgYXBpKGAke01MQl9BUEl9L3RlYW1zLyR7aWR9L3N0YXRzP3N0YXRzPXN0YXRzcGxpdHMmZ3JvdXA9aGl0dGluZyZzZWFzb249JHtzZWFzb259JnNpdENvZGVzPXZsYCkNCiAgICBdKTsNCiAgICBjb25zdCBwaWNrPWQ9PmQ/LnN0YXRzPy5bMF0/LnNwbGl0cz8uWzBdPy5zdGF0fHxudWxsOw0KICAgIGNvbnN0IHJzPXBpY2sociksbHM9cGljayhsKTsNCiAgICBjb25zdCBvdXQ9e3ZzUkhQOnthdmc6bnVtKHJzPy5hdmcpLG9icDpudW0ocnM/Lm9icCksc2xnOm51bShycyYuc2xnKSxvcHM6bnVtKHJzPy5vcHMpfSx2c0xIUDp7YXZnOm51bShscyYyYXZnKSxvYnA6bnVtKGxzPy5vYnApLHNsbzpudW0obHM/LnNsb2p9LG9wczpudW0obHM/Lm9wcyl9LHNvdXJjZTonTUxCIFN0YXRzIEFQSSBzdGF0U3BsaXRzJ307DQogICAgc3BsaXRDYWNoZS5zZXQoa2V5LG91dCk7cmV0dXJuIG91dDsNCiAgfQ0KICBhc3luYyBmdW5jdGlvbiBvZmZpY2lhbENvbnRleHQoaWQpew0KICAgIGNvbnN0IGtleT1gb2ZmaWNpYWwtdjQtY29udGV4dC0ke2lkfS0ke3NlbGVjdGVkRGF0ZX1gOw0KICAgIGlmKGNvbnRleHRDYWNoZS5oYXMoa2V5KSlyZXR1cm4gY29udGV4dENhY2hlLmdldChrZXkpOw0KICAgIGNvbnN0IGVuZD1hZGREYXlzKHNlbGVjdGVkRGF0ZSwtMSksYmVnaW49YWRkRGF5cyhlbmQsLTM1KTsNCiAgICBjb25zdCBkPWF3YWl0IGFwaShgJHtNTEJfQVBJfS9zY2hlZHVsZT9zcG9ydElkPTEmdGVhbUlkPSR7aWR9JnN0YXJ0RGF0ZT0ke2JlZ2lufSZlbmREYXRlPSR7ZW5kfSZoeWRyYXRlPXRlYW1gKTsNCiAgICBjb25zdCBnYW1lcz0oZC4/ZGF0ZXM/PVtdKS5mbGF0TWFwKHg9PngubG9nYW1lc3x8W10pLmZpbHRlcihnPT5nLnN0YXR1cz8uYWJzdHJhY3RHYW1lU3RhdGU9PT0nRmluYWwnKS5zb3J0KChhLGIpPT5uZXcgRGF0ZShiLmdhbWVEYXRlKS1uZXcgRGF0ZShhLmdhbWVEYXRlKSkuc2xpY2UoMCwxMCk7DQogICAgbGV0IHJmPTAscmE9MCx3PTAsbj0wOw0KICAgIGZvcihjb25zdCBnIG9mIGdhbWVzKXsNCiAgICAgIGNvbnN0IGhvbWU9TnVtYmVyKGcudGVhbXM/LmhvbWU/LnRlYW0/LmlkKT09TnVtYmVyKGlkKTsNCiAgICAgIGNvbnN0IG93bj1udW0oaG9tZT9nLnRlYW1zPy5ob21lPy5zY29yZTplLnRlYW1zPy5hd2F5Py5zY29yZSk7DQogICAgICBjb25zdCBvcHA9bnVtKGhvbWU/Zy50ZWFtcz8uYXdheT8uc2NvcmU6Zy50ZWFtcz8uaG9tZT8uc2NvcmUpOw0KICAgICAgaWYob3duIT1udWxsJiZvcHAhPW51bGwpe3JmKz1vd24scmErPW9wcDtpZihvd24+b3BwKXcrKztuKys7fQ0KICAgIH0NCiAgICBjb25zdCBsYXN0PWdhbWVzWzBdPy5nYW1lRGF0ZT9uZXcgRGF0ZShnYW1lc1swXS5nYW1lRGF0ZSk6bnVsbDsNCiAgICBjb25zdCB0b2RheT1uZXcgRGF0ZShgJHNlbGVjdGVkRGF0ZX1UMDA6MDA6MDArMDg6MDBgKTsNCiAgICBjb25zdCByZXN0RGF5cz1sYXN0P01hdGgubWF4KDAsTWF0aC5mbG9vcigodG9kYXktbGFzdCkvODY0MDAwMDApLTEpOm51bGw7DQogICAgY29uc3Qgb3V0PXtsYXN0MTBSdW5EaWZmOm4/KHJmLXJhKS9uOm51bGwsbGFzdDEwV2luUHRjOm4/dy9uOm51bGwscmVzdERheXMsZ2FtZXNDb25zaWRlcmVkOm4sc291cmNlOidNTEJIFN0YXRzIEFQSSBTY2hlZHVsZSd9Ow0KICAgIGNvbnRleHRDYWNoZS5zZXQoa2V5LG91dCk7cmV0dXJuIG91dDsNCiAgfQ0KICB3aW5kb3cudGVhbVN0YXRzPWFzeW5jIGZ1bmN0aW9uKGlkKXtjb25zdCBiYXNlPWF3YWl0IG9yaWdpbmFsVGVhbVN0YXRzKGlkKTtyZXR1cm4ge...TRUNCATED...'.replace('...TRUNCATED...','').decode()
           p.write_text(s.replace(marker,patch+marker,1),encoding='utf-8')
           PY
       - name: Commit patched index
