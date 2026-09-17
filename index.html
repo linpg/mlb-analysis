@@ -1909,8 +1909,6 @@ async function load(){
 async function refreshLive(games,my){
   if(my!==version)return;
   try{
-    /* 每 15 秒重新讀 MLB 官方 feed/live。
-       這不只更新比分，也會抓到賽前稍後才公布的官方先發打線。 */
     const feedList=await Promise.all(games.map(g=>feed(g)));
     if(my!==version)return;
 
