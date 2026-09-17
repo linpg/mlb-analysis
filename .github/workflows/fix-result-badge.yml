@@ -2,7 +2,7 @@ name: Fix prediction result badge
 on:
   push:
     paths:
-      - '.github/workflows/fix-result-badge.yml'
+      - 'fix-result-badge.trigger'
 
 jobs:
   fix:
