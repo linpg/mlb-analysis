@@ -1746,7 +1746,11 @@ async function refreshLive(games,my){
     document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 台灣時間 ｜ 每 15 秒更新比分`;
   }catch(e){}
 }
-document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};
+/* MLB_OFFICIAL_MODEL_DATA_V6 */
+(()=>{const T=window.teamStats,B=window.buildOfficialPredictionModel,C=new Map(),N=x=>Number.isFinite(+x)?+x:null;
+async function S(id){const y=selectedDate.slice(0,4),k=id+'-'+y;if(C.has(k))return C.get(k);const [a,b]=await Promise.all([json(`${MLB_API}/teams/${id}/stats?stats=statSplits&group=hitting&season=${y}&sitCodes=vr`),json(`${MLB_API}/teams/${id}/stats?stats=statSplits&group=hitting&season=${y}&sitCodes=vl`)]);const p=x=>x?.stats?.[0]?.splits?.[0]?.stat||{},r=p(a),l=p(b),z={vsRHP:{avg:N(r.avg),ops:N(r.ops)},vsLHP:{avg:N(l.avg),ops:N(l.ops)},source:'MLB Stats API'};C.set(k,z);return z}
+window.teamStats=async id=>({...await T(id),officialSplits:await S(id)});
+window.buildOfficialPredictionModel=args=>{const m=B(args),a=args.awayStats||{},h=args.homeStats||{},f=t=>{const r=N(t.officialSplits?.vsRHP?.ops),l=N(t.officialSplits?.vsLHP?.ops),o=r??l;return o==null?1:Math.max(.97,Math.min(1.03,1+(o-.75)*.12))};m.awayStrength*=f(a);m.homeStrength*=f(h);const q=m.awayStrength/(m.awayStrength+m.homeStrength);m.awayWin=Math.max(.05,Math.min(.95,.5+(q-.5)*.92));m.homeWin=1-m.awayWin;m.awayRuns=Math.max(1.5,Math.min(9,m.awayRuns*f(a)));m.homeRuns=Math.max(1.5,Math.min(9,m.homeRuns*f(h)));m.totalRuns=m.awayRuns+m.homeRuns;m.officialEnhancement={away:a.officialSplits||null,home:h.officialSplits||null,source:'MLB Stats API'};return m}})();document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};
 document.getElementById("next").onclick=()=>{selectedDate=addDays(selectedDate,1);load()};
 document.getElementById("today").onclick=()=>{selectedDate=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Taipei"});load()};
 load();
