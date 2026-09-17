@@ -1835,7 +1835,7 @@ if(
       <div class="pitch"><b>風速／風向</b><div class="weather-value">${weather.windText?esc(weather.windText):(weather.wind!=null?esc(weather.wind)+" mph":"資料不足")}</div><div class="muted">官方 gameData.weather</div></div>
       <div class="pitch"><b>天氣</b><div class="weather-value">${weather.condition?esc(weather.condition):"資料不足"}</div><div class="muted">官方 gameData.weather</div></div>
     </div><div class="muted" style="margin-top:7px">只有 MLB feed/live 實際回傳的環境資料才會進入大小分評估；沒有資料不補值。</div></div>
-    ${dataHealth(g,p,ap,hp,aStats,hStats,aRecent,hRecent,weather,aBull,hBull)}
+    ${dataHealth(g,null,ap,hp,aStats,hStats,aRecent,hRecent,weather,aBull,hBull)}
     </div>
     <div class="analysis">${officialAnalysisHTML(
   g,
