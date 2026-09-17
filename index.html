@@ -1292,23 +1292,17 @@ function settlePredictionRecord(g){
   syncPredictionRecordToCloud(rec);
 }
 function updateAccuracy(g,p){
-  // 僅將已保存的賽前預測與完賽結果配對，不重新產生歷史預測。
+  // 僅依「勝負分析命中／未命中」結算，不把預測比分誤差混入勝負準確度。
   settlePredictionRecord(g);
 }
 function accuracySummary(){
   const date=selectedDate;
-  const all=loadPredictionRecords().filter(x=>x.selectedDate===date && x.settled);
-  const scored=all.filter(x=>Number.isFinite(x.awayError)&&Number.isFinite(x.homeError));
-  const wins=all.filter(x=>x.winnerHit).length;
-  const misses=all.length-wins;
-  const teamPct=all.length?wins/all.length*100:null;
-  const scoreMAE=scored.length?scored.reduce((s,x)=>s+((x.awayError+x.homeError)/2),0)/scored.length:null;
-  // 將每隊平均比分誤差換算成 0~100 的可讀指標；誤差每增加 1 分，準確度下降 10 個百分點。
-  const scorePct=scoreMAE==null?null:Math.max(0,Math.min(100,100-scoreMAE*10));
-  const finalGamesToday=[...new Set(all.map(x=>x.gamePk))].length;
-  const storedToday=loadPredictionRecords().filter(x=>x.selectedDate===date);
-  const unscoredFinal=storedToday.filter(x=>x.settled===false).length;
-  return {n:all.length,wins,misses,teamPct,scorePct,scoredN:scored.length,storedN:storedToday.length,unscoredFinal};
+  const all=loadPredictionRecords().filter(x=>x.selectedDate===date && x.settled && (x.winnerHit===true || x.winnerHit===false));
+  const wins=all.filter(x=>x.winnerHit===true).length;
+  const misses=all.filter(x=>x.winnerHit===false).length;
+  const n=wins+misses;
+  const teamPct=n?wins/n*100:null;
+  return {n,wins,misses,teamPct};
 }
 function accuracyHTML(){
   const a=accuracySummary();
@@ -1316,11 +1310,12 @@ function accuracyHTML(){
   if(a.n===0)return "";
   return `<div class="accuracy-box"><div class="section-title">📊 當日模型預測準確度 <span class="phase-tag">${MODEL_VERSION}</span></div>
   <div class="accuracy-grid">
-    <div class="accuracy-item"><span class="muted">🏆 預測隊伍準確率</span><b>${f(a.teamPct)}</b></div>
-    <div class="accuracy-item"><span class="muted">⚾ 預測得分準確度</span><b>${f(a.scorePct)}</b></div>
+    <div class="accuracy-item"><span class="muted">🏆 勝負分析準確率</span><b>${f(a.teamPct)}</b></div>
     <div class="accuracy-item"><span class="muted">預測正確</span><b>${a.wins} 場</b></div>
     <div class="accuracy-item"><span class="muted">預測錯誤</span><b>${a.misses} 場</b></div>
+    <div class="accuracy-item"><span class="muted">已結算</span><b>${a.n} 場</b></div>
   </div>
+  <div class="accuracy-note">只統計各場「勝負分析」顯示為 ✓ 勝負分析命中 或 ✕ 勝負分析未命中 的已結束比賽；預測比分不計入此準確率。</div>
   </div>`;
 }
 
@@ -1625,6 +1620,8 @@ if(
     createdAt:Date.now(),
     settled:false
   });
+  // Final 比賽立即依實際終場比分結算，讓上方準確度與場內徽章一致。
+  settlePredictionRecord(g);
 }
   let ls=live?.[g.gamePk]||live?.[g.gamePk.toString()]||{};
   let liveA=ls.r?.[0]??a.score??"-",liveH=ls.r?.[1]??h.score??"-";
