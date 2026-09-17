@@ -1,0 +1,117 @@
+name: Remove PlaySport data flow
+
+on:
+  push:
+    paths:
+      - '.github/workflows/remove-playsport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remove-playsport:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Remove PlaySport from index.html data flow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('index.html')
+          s = path.read_text(encoding='utf-8')
+          original = s
+
+          s, n = re.subn(
+              r'/\* ---------------- PlaySport ----------------.*?\nconst MODEL_VERSION=',
+              'const MODEL_VERSION=',
+              s,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'PlaySport block replacement count={n}, expected 1')
+
+          s = s.replace(
+              'function psDate(){return selectedDate.replaceAll("-","")}\n',
+              ''
+          )
+
+          s, n = re.subn(
+              r'\s*let p=findPS\(ps,g\);\s*\n\s*/\*\s*\n\s*PlaySport 資料僅暫時保留給舊畫面相容性。\s*\n\s*新模型不再使用 p 的任何賠率、百分比或預測結果。\s*\n\s*\*/\s*\n',
+              '\n',
+              s,
+          )
+          if n != 1:
+              raise SystemExit(f'active findPS removal count={n}, expected 1')
+
+          s, n = re.subn(
+              r'async function renderGame\(g,ps,live,feedData\)',
+              'async function renderGame(g,live,feedData)',
+              s,
+          )
+          if n != 1:
+              raise SystemExit(f'renderGame signature replacement count={n}, expected 1')
+
+          s, n = re.subn(
+              r'let games=await mlbSchedule\(\),ps=new Map\(\);',
+              'let games=await mlbSchedule();',
+              s,
+          )
+          if n != 1:
+              raise SystemExit(f'load PlaySport map replacement count={n}, expected 1')
+
+          s, n = re.subn(
+              r'await renderGame\(g,ps,live,feedData\)',
+              'await renderGame(g,live,feedData)',
+              s,
+          )
+          if n != 1:
+              raise SystemExit(f'renderGame call replacement count={n}, expected 1')
+
+          s, n = re.subn(
+              r'\s*let live=await liveJSON\(games\.map\(g=>\{.*?\}\)\);\n',
+              '\n    let live={};\n',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'load liveJSON replacement count={n}, expected 1')
+
+          s, n = re.subn(
+              r'\s*let live=await liveJSON\(games\.map\(g=>\{.*?\}\)\);\n',
+              '\n    let live={};\n',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'refreshLive liveJSON replacement count={n}, expected 1')
+
+          forbidden = [
+              'playsport.cc', 'findPS(', 'parsePS(', 'fetchText(',
+              'PSP=', 'const PS=', 'const LS=', 'psTable(', 'PlaySport proxy'
+          ]
+          bad = [x for x in forbidden if x in s]
+          if bad:
+              raise SystemExit('PlaySport remnants found: ' + ', '.join(bad))
+
+          if s == original:
+              raise SystemExit('No changes made')
+
+          path.write_text(s, encoding='utf-8')
+          print('PlaySport removed from active data flow and legacy parser block.')
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove PlaySport data source"
+          git push
