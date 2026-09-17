@@ -55,7 +55,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&
 function addDays(s,n){let d=new Date(s+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)}
 function fmtDate(){return selectedDate.replaceAll("-","/")}
 function setDateUI(){
-  document.getElementById("dateText").textContent=`🇹🇼 ${fmtDate()} ｜ MLB 官方賽程`;
+  document.getElementById("dateText").textContent=`🇹🇼 ${fmtDate()} ｜ MLB 官方賽程／台灣時間`;
   document.getElementById("prev").textContent=`← ${addDays(selectedDate,-1).slice(5).replace("-","/")}`;
   document.getElementById("next").textContent=`${addDays(selectedDate,1).slice(5).replace("-","/")} →`;
 }
@@ -98,7 +98,18 @@ function gameStatus(g){
   if(s==="Final")return ["已結束","final"];
   return [g.status?.detailedState||"尚未開打","preview"];
 }
-function timeTW(g){try{return new Intl.DateTimeFormat("zh-TW",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Taipei"}).format(new Date(g.gameDate))}catch{return "--:--"}}
+function timeTW(g){
+  try{
+    const dt=new Date(g?.gameDate);
+    if(Number.isNaN(dt.getTime()))return "--:--";
+    return new Intl.DateTimeFormat("zh-TW",{
+      timeZone:"Asia/Taipei",
+      hour:"2-digit",
+      minute:"2-digit",
+      hourCycle:"h23"
+    }).format(dt);
+  }catch{return "--:--"}
+}
 async function feed(g){
   return json(`https://statsapi.mlb.com/api/v1.1/game/${g.gamePk}/feed/live`,12000).catch(()=>null);
 }
@@ -1867,7 +1878,7 @@ async function load(){
     let box=document.getElementById("games");box.innerHTML="";
     for(const g of games){if(my!==version)break;box.insertAdjacentHTML("beforeend",await renderGame(g,live,feedData))}
     document.getElementById("accuracy").innerHTML=accuracyHTML();
-    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 每 15 秒更新比分`;
+    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 台灣時間 ｜ 每 15 秒更新比分`;
     timer=setInterval(()=>refreshLive(games,my),15000);
   }catch(e){
     document.getElementById("games").innerHTML=`<div class="error">載入失敗：${esc(e.message)}<br><br>MLB 官方資料目前無法連線。<br>請稍後重新整理。</div>`;
@@ -1898,7 +1909,7 @@ async function refreshLive(games,my){
       }
     });
     document.getElementById("accuracy").innerHTML=accuracyHTML();
-    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 每 15 秒更新比分`;
+    document.getElementById("refreshInfo").textContent=`最後更新：${new Date().toLocaleTimeString("zh-TW")} ｜ MLB 官方資料 ｜ 台灣時間 ｜ 每 15 秒更新比分`;
   }catch(e){}
 }
 document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};
