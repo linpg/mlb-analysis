@@ -1296,10 +1296,11 @@ function updateAccuracy(g,p){
   settlePredictionRecord(g);
 }
 function accuracySummary(){
-  const date=selectedDate;
-  const all=loadPredictionRecords().filter(x=>x.selectedDate===date && x.settled && (x.winnerHit===true || x.winnerHit===false));
-  const wins=all.filter(x=>x.winnerHit===true).length;
-  const misses=all.filter(x=>x.winnerHit===false).length;
+  /* 當日準確度直接以畫面上各場 Final 的「勝負分析命中／未命中」為唯一來源。
+     不讀舊預測紀錄、不讀預測比分、不讀比分誤差，確保統計與使用者看到的 12/3 完全一致。 */
+  const badges=[...document.querySelectorAll(".game-card .result-badge")];
+  const wins=badges.filter(x=>x.textContent.includes("勝負分析命中")&&!x.textContent.includes("未命中")).length;
+  const misses=badges.filter(x=>x.textContent.includes("勝負分析未命中")).length;
   const n=wins+misses;
   const teamPct=n?wins/n*100:null;
   return {n,wins,misses,teamPct};
