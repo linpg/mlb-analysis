@@ -41,9 +41,6 @@ header{background:#111;color:#fff;padding:18px}.header-inner,.container{max-widt
 
 <script>
 const MLB_API="https://statsapi.mlb.com/api/v1";
-const PS="https://www.playsport.cc/livescore/1";
-const PSP="https://www.playsport.cc/predict/scale?allianceid=1&gametime=";
-const LS=["https://ls6.playsport.cc","https://ls7.playsport.cc"];
 let selectedDate=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Taipei"});
 let version=0,timer=null;
 const teamCache=new Map(),playerCache=new Map();
@@ -191,7 +188,7 @@ async function recentBullpenStats(id){
       const ps=pl.stats.pitching;
       // gamesStarted=1 的先發不計入牛棚，其餘出賽投手視為牛棚。
       if(Number(ps.gamesStarted||0)>0)continue;
-      ip+=Number(ps.inningsPitched)||0;
+      ip+=inningsToDecimal(ps.inningsPitched);
       er+=Number(ps.earnedRuns)||0;
       bb+=Number(ps.baseOnBalls)||0;
       h+=Number(ps.hits)||0;
@@ -221,6 +218,968 @@ async function pitcher(id){
   playerCache.set(id,p);return p;
 }
 
+  /* ---------------- MLB Official Pitcher Upgrade ---------------- */
+
+/* MLB innings notation:
+   1.0 = 1 inning
+   1.1 = 1 1/3 innings
+   1.2 = 1 2/3 innings
+*/
+function inningsToDecimal(ip){
+  if(ip==null || ip==="") return 0;
+
+  const s=String(ip).trim();
+
+  if(!s.includes(".")){
+    const n=Number(s);
+    return Number.isFinite(n)?n:0;
+  }
+
+  const [whole,frac]=s.split(".");
+  const w=Number(whole)||0;
+  const f=Number(frac);
+
+  if(!Number.isFinite(f)) return 0;
+
+  if(f===1) return w+1/3;
+  if(f===2) return w+2/3;
+
+  return w+f/10;
+}
+
+function fmtIP(ip){
+  if(ip==null || !Number.isFinite(Number(ip))) return "-";
+
+  const n=Number(ip);
+  const whole=Math.floor(n);
+  const frac=n-whole;
+
+  if(Math.abs(frac-1/3)<0.01) return `${whole}.1`;
+  if(Math.abs(frac-2/3)<0.01) return `${whole}.2`;
+
+  return n.toFixed(1);
+}
+
+
+/* MLB 官方：先發投手近 10 次先發 */
+async function pitcherRecent10(id){
+  if(!id) return null;
+
+  const season=new Date().getFullYear();
+
+  const d=await json(
+    `${MLB_API}/people/${id}/stats?stats=gameLog&group=pitching&season=${season}`
+  ).catch(()=>null);
+
+  const splits=d?.stats?.find(
+    x=>x.type?.displayName==="gameLog" ||
+       x.type?.name==="gameLog"
+  )?.splits||[];
+
+  if(!splits.length){
+    return {
+      games:0,
+      complete:false,
+      era:null,
+      whip:null,
+      avg:null,
+      k9:null,
+      bb9:null,
+      inningsPitched:0,
+      earnedRuns:0,
+      runs:0,
+      strikeOuts:0,
+      baseOnBalls:0,
+      hits:0
+    };
+  }
+
+  /* 只取真正有先發的比賽 */
+  const starts=splits
+    .filter(x=>{
+      const s=x.stat||{};
+      return Number(s.gamesStarted||0)>0;
+    })
+    .sort((a,b)=>{
+      const da=new Date(a.date||0).getTime();
+      const db=new Date(b.date||0).getTime();
+      return db-da;
+    })
+    .slice(0,10);
+
+  if(!starts.length){
+    return {
+      games:0,
+      complete:false,
+      era:null,
+      whip:null,
+      avg:null,
+      k9:null,
+      bb9:null,
+      inningsPitched:0,
+      earnedRuns:0,
+      runs:0,
+      strikeOuts:0,
+      baseOnBalls:0,
+      hits:0
+    };
+  }
+
+  let ip=0,
+      er=0,
+      runs=0,
+      so=0,
+      bb=0,
+      hits=0;
+
+  for(const g of starts){
+    const s=g.stat||{};
+
+    ip+=inningsToDecimal(s.inningsPitched);
+    er+=Number(s.earnedRuns||0);
+    runs+=Number(s.runs||0);
+    so+=Number(s.strikeOuts||0);
+    bb+=Number(s.baseOnBalls||0);
+    hits+=Number(s.hits||0);
+  }
+
+  const era=ip>0 ? er*9/ip : null;
+  const whip=ip>0 ? (bb+hits)/ip : null;
+  const avg=ip>0 ? hits/(hits+0) : null;
+  const k9=ip>0 ? so*9/ip : null;
+  const bb9=ip>0 ? bb*9/ip : null;
+
+  return {
+    games:starts.length,
+    complete:starts.length>=10,
+
+    era,
+    whip,
+    avg,
+    k9,
+    bb9,
+
+    inningsPitched:ip,
+    earnedRuns:er,
+    runs,
+    strikeOuts:so,
+    baseOnBalls:bb,
+    hits
+  };
+}
+
+
+/* 顯示用：把近 10 次先發數據整理成穩定格式 */
+function pitcherRecentSummary(p){
+  if(!p) return null;
+
+  return {
+    games:p.games??0,
+    complete:!!p.complete,
+
+    era:p.era!=null?Number(p.era):null,
+    whip:p.whip!=null?Number(p.whip):null,
+    k9:p.k9!=null?Number(p.k9):null,
+    bb9:p.bb9!=null?Number(p.bb9):null,
+
+    inningsPitched:p.inningsPitched??0,
+    earnedRuns:p.earnedRuns??0,
+    runs:p.runs??0,
+    strikeOuts:p.strikeOuts??0,
+    baseOnBalls:p.baseOnBalls??0,
+    hits:p.hits??0
+  };
+}
+
+
+/* 強化版先發資料：
+   球季資料 + 近10次先發 */
+async function buildOfficialPitcherData(id){
+  if(!id) return null;
+
+  const [season,recent]=await Promise.all([
+    pitcher(id),
+    pitcherRecent10(id)
+  ]);
+
+  if(!season && !recent) return null;
+
+  return {
+    season:season||null,
+    recent10:pitcherRecentSummary(recent)
+  };
+}
+/* ---------------- Official MLB Prediction Model ---------------- */
+
+/* 安全數字 */
+function num(v,def=0){
+  const n=Number(v);
+  return Number.isFinite(n)?n:def;
+}
+
+/* 限制數值範圍 */
+function clamp(v,min,max){
+  return Math.max(min,Math.min(max,v));
+}
+
+/* MLB 打線攻擊力 */
+function lineupAttackScore(hitterData){
+  if(!hitterData?.length) return null;
+
+  let total=0;
+  let count=0;
+
+  for(const h of hitterData){
+    if(!h)continue;
+
+    const season=h.season||{};
+    const recent=h.recent10||{};
+    const split=h.split||{};
+
+    const seasonOPS=num(season.ops,NaN);
+    const recentOPS=num(recent.ops,NaN);
+    const splitOPS=num(split.ops,NaN);
+
+    let values=[];
+
+    if(Number.isFinite(seasonOPS))values.push(seasonOPS);
+    if(Number.isFinite(recentOPS))values.push(recentOPS);
+    if(Number.isFinite(splitOPS))values.push(splitOPS);
+
+    if(!values.length)continue;
+
+    /* 對先發投手左右投拆分給較高權重，
+       近10場反映目前打擊狀態 */
+    let score=
+      (Number.isFinite(splitOPS)?splitOPS*0.45:0)+
+      (Number.isFinite(recentOPS)?recentOPS*0.35:0)+
+      (Number.isFinite(seasonOPS)?seasonOPS*0.20:0);
+
+    const weight=
+      (Number.isFinite(splitOPS)?0.45:0)+
+      (Number.isFinite(recentOPS)?0.35:0)+
+      (Number.isFinite(seasonOPS)?0.20:0);
+
+    if(weight<=0)continue;
+
+    total+=score/weight;
+    count++;
+  }
+
+  if(!count)return null;
+
+  return total/count;
+}
+
+
+/* 把 OPS 轉成相對攻擊指標 */
+function normalizeOPS(ops){
+  if(ops==null || !Number.isFinite(Number(ops)))return 1;
+
+  /*
+    0.600 左右：偏弱
+    0.700 左右：一般
+    0.800 左右：偏強
+    0.900+：非常強
+
+    只作相對模型，不直接硬加固定分數。
+  */
+  return clamp(Number(ops)/0.750,0.70,1.30);
+}
+
+
+/* 投手壓制能力 */
+function pitcherSuppressionScore(p){
+  if(!p)return null;
+
+  const era=num(p.era,NaN);
+  const whip=num(p.whip,NaN);
+  const k9=num(p.k9,NaN);
+
+  let score=1;
+  let weight=0;
+
+  if(Number.isFinite(era)){
+    score*=clamp(3.90/Math.max(era,1.5),0.70,1.30);
+    weight++;
+  }
+
+  if(Number.isFinite(whip)){
+    score*=clamp(1.25/Math.max(whip,0.70),0.75,1.25);
+    weight++;
+  }
+
+  if(Number.isFinite(k9)){
+    score*=clamp(k9/8.5,0.80,1.20);
+    weight++;
+  }
+
+  return weight?score:1;
+}
+
+
+/* 先發投手球季 + 近10次先發 */
+function combinedPitcherScore(pitcherData){
+  if(!pitcherData)return null;
+
+  const season=pitcherData.season||pitcherData;
+  const recent=pitcherData.recent10||null;
+
+  const s=pitcherSuppressionScore(season);
+  const r=recent?pitcherSuppressionScore(recent):null;
+
+  if(s!=null && r!=null){
+    /* 近期狀態稍高權重 */
+    return s*0.40+r*0.60;
+  }
+
+  return s??r??1;
+}
+
+
+/* 球隊近期攻擊能力 */
+function recentOffenseScore(recent){
+  if(!recent)return 1;
+
+  const ops=num(recent.ops,NaN);
+  const runs=num(recent.runs,NaN);
+  const games=num(recent.games,0);
+
+  let score=1;
+
+  if(Number.isFinite(ops)){
+    score*=clamp(ops/0.750,0.75,1.25);
+  }
+
+  if(games>0 && Number.isFinite(runs)){
+    const rpg=runs/games;
+    score*=clamp(rpg/4.5,0.80,1.20);
+  }
+
+  return score;
+}
+
+
+/* 牛棚狀態 */
+function bullpenScore(bullpen){
+  if(!bullpen)return 1;
+
+  const era=num(bullpen.era,NaN);
+  const whip=num(bullpen.whip,NaN);
+
+  let score=1;
+
+  if(Number.isFinite(era)){
+    score*=clamp(3.90/Math.max(era,1.5),0.75,1.25);
+  }
+
+  if(Number.isFinite(whip)){
+    score*=clamp(1.25/Math.max(whip,0.70),0.80,1.20);
+  }
+
+  return score;
+}
+
+
+/* 天氣／球場環境係數
+   不直接寫「下雨 +1 分」這種固定加分。
+   只對模型的總得分環境做有限度調整。 */
+function environmentScore(weather){
+  if(!weather)return 1;
+
+  let factor=1;
+
+  const temp=num(weather.temp,NaN);
+  const wind=num(weather.wind,NaN);
+
+  /* 溫度：
+     過低通常不利飛行距離；
+     高溫可能提高得分環境。
+     只做很小幅度調整。 */
+  if(Number.isFinite(temp)){
+    if(temp<45)factor*=0.97;
+    else if(temp>=85)factor*=1.03;
+  }
+
+  /* 強風只在方向資料可用時才進一步處理。
+     目前 MLB feed 若只有風速，不猜測風向。 */
+  if(Number.isFinite(wind) && wind>=20){
+    factor*=0.99;
+  }
+
+  return clamp(factor,0.94,1.06);
+}
+
+
+/* 球隊整體攻擊 + 打線 + 近期狀態 */
+function teamOffenseModel({
+ teamStatsData,
+ recentData,
+ lineupData,
+ opposingPitcher
+}){
+  let score=1;
+
+  const seasonOPS=num(teamStatsData?.ops,NaN);
+
+  if(Number.isFinite(seasonOPS)){
+    score*=normalizeOPS(seasonOPS);
+  }
+
+  const recent=recentOffenseScore(recentData);
+  score*=recent;
+
+  const lineupOPS=lineupAttackScore(lineupData);
+
+  if(lineupOPS!=null){
+    score*=clamp(normalizeOPS(lineupOPS),0.75,1.25);
+  }
+
+  const pitcherPenalty=combinedPitcherScore(opposingPitcher);
+
+  if(pitcherPenalty!=null){
+    /* 對方投手越強，我方預期得分越低 */
+    score*=clamp(1/Math.max(pitcherPenalty,0.70),0.78,1.25);
+  }
+
+  return clamp(score,0.55,1.55);
+}
+
+
+/* 單隊勝負模型 */
+function buildTeamWinStrength({
+  teamStatsData,
+  recentData,
+  bullpenData,
+  lineupData,
+  ownPitcher,
+  opposingPitcher
+}){
+  const offense=teamOffenseModel({
+    teamStatsData,
+    recentData,
+    lineupData,
+    opposingPitcher
+  });
+
+  const ownPitcherScore=combinedPitcherScore(ownPitcher)||1;
+  const bullpen=bullpenScore(bullpenData);
+
+  /*
+    投手越強，球隊整體勝率基礎越高。
+    牛棚只佔較小部分，避免與先發重複計算。
+  */
+  const strength=
+    offense*
+    Math.pow(ownPitcherScore,0.38)*
+    Math.pow(bullpen,0.18);
+
+  return clamp(strength,0.45,1.80);
+}
+
+
+/* 勝負機率 */
+function calculateWinProbability(awayStrength,homeStrength){
+  const a=num(awayStrength,1);
+  const h=num(homeStrength,1);
+
+  /*
+    Logistic：
+    不直接把強弱差轉成 90%+，
+    避免模型過度自信。
+  */
+  const diff=Math.log(a/h);
+
+  const away=1/(1+Math.exp(-diff*2.15));
+
+  return {
+    away:clamp(away,0.05,0.95),
+    home:clamp(1-away,0.05,0.95)
+  };
+}
+
+
+/* 預期得分 */
+function projectedRuns({
+  teamStatsData,
+  recentData,
+  lineupData,
+  opposingPitcher,
+  opposingBullpen,
+  environment
+}){
+  const seasonRPG=num(teamStatsData?.runs,NaN)/
+                  Math.max(num(teamStatsData?.gamesPlayed,0),1);
+
+  const recentRPG=
+    num(recentData?.runs,NaN)/
+    Math.max(num(recentData?.games,0),1);
+
+  let base=[];
+
+  if(Number.isFinite(seasonRPG))base.push(seasonRPG);
+  if(Number.isFinite(recentRPG))base.push(recentRPG);
+
+  let runs=base.length
+    ? base.reduce((a,b)=>a+b,0)/base.length
+    : 4.5;
+
+  const lineupOPS=lineupAttackScore(lineupData);
+
+  if(lineupOPS!=null){
+    runs*=normalizeOPS(lineupOPS);
+  }
+
+  const pitcher=combinedPitcherScore(opposingPitcher);
+
+  if(pitcher!=null){
+    runs*=clamp(1/Math.max(pitcher,0.70),0.78,1.25);
+  }
+
+  const bullpen=bullpenScore(opposingBullpen);
+
+  runs*=clamp(1/bullpen,0.88,1.15);
+
+  runs*=environmentScore(environment);
+
+  return clamp(runs,1.5,9.5);
+}
+
+
+/* 完整官方模型 */
+function buildOfficialPredictionModel({
+  awayStats,
+  homeStats,
+  awayRecent,
+  homeRecent,
+  awayBullpen,
+  homeBullpen,
+  awayLineup,
+  homeLineup,
+  awayPitcher,
+  homePitcher,
+  weather
+}){
+  const awayStrength=buildTeamWinStrength({
+    teamStatsData:awayStats,
+    recentData:awayRecent,
+    bullpenData:awayBullpen,
+    lineupData:awayLineup,
+    ownPitcher:awayPitcher,
+    opposingPitcher:homePitcher
+  });
+
+  const homeStrength=buildTeamWinStrength({
+    teamStatsData:homeStats,
+    recentData:homeRecent,
+    bullpenData:homeBullpen,
+    lineupData:homeLineup,
+    ownPitcher:homePitcher,
+    opposingPitcher:awayPitcher
+  });
+
+  const probability=
+    calculateWinProbability(
+      awayStrength,
+      homeStrength
+    );
+
+  const awayRuns=projectedRuns({
+    teamStatsData:awayStats,
+    recentData:awayRecent,
+    lineupData:awayLineup,
+    opposingPitcher:homePitcher,
+    opposingBullpen:homeBullpen,
+    environment:weather
+  });
+
+  const homeRuns=projectedRuns({
+    teamStatsData:homeStats,
+    recentData:homeRecent,
+    lineupData:homeLineup,
+    opposingPitcher:awayPitcher,
+    opposingBullpen:awayBullpen,
+    environment:weather
+  });
+
+  return {
+    awayStrength,
+    homeStrength,
+
+    awayWin:probability.away,
+    homeWin:probability.home,
+
+    awayRuns,
+    homeRuns,
+
+    totalRuns:awayRuns+homeRuns,
+
+    source:"MLB 官方資料模型"
+  };
+}
+  
+  /* ---------------- MLB 官方打者資料 ----------------
+   第 2 段：
+   1. 官方今日先發打線
+   2. 打者本季打擊
+   3. 打者最近 10 場
+   4. 對右投 / 對左投拆分
+   全部只使用 MLB Stats API。
+---------------------------------------------------- */
+
+function battingNumber(v){
+  const n=Number(v);
+  return Number.isFinite(n)?n:null;
+}
+
+function battingAvgValue(v){
+  const n=Number(v);
+  return Number.isFinite(n)?n:null;
+}
+
+/* 取得 MLB 官方 feed 中今天已公布的實際打線。
+   battingOrder 100~900 分別代表第 1~9 棒。
+   如果官方尚未公布，回傳空陣列，不自行猜測。
+*/
+function officialLineup(feedData,side){
+  const players=feedData?.liveData?.boxscore?.teams?.[side]?.players||{};
+  
+  const list=Object.values(players)
+    .filter(p=>p?.battingOrder!=null)
+    .map(p=>({
+      order:Number(p.battingOrder),
+      id:p.person?.id,
+      name:p.person?.fullName||"-",
+      position:p.position?.abbreviation||p.position?.name||"-",
+      battingSide:p.bats?.code||p.bats?.description||"-"
+    }))
+    .filter(p=>p.id&&Number.isFinite(p.order))
+    .sort((a,b)=>a.order-b.order);
+
+  return list.slice(0,9);
+}
+
+/* MLB 官方球員本季打擊資料 */
+async function hitterSeason(id){
+  if(!id)return null;
+
+  const key=`hitter-season-${id}-${new Date().getFullYear()}`;
+  if(playerCache.has(key))return playerCache.get(key);
+
+  const season=new Date().getFullYear();
+
+  const d=await json(
+    `${MLB_API}/people/${id}/stats?stats=season&group=hitting&season=${season}`,
+    12000
+  ).catch(()=>null);
+
+  const s=d?.stats?.[0]?.splits?.[0]?.stat||{};
+
+  const v={
+    games:battingNumber(s.gamesPlayed),
+    pa:battingNumber(s.plateAppearances),
+    ab:battingNumber(s.atBats),
+    avg:battingAvgValue(s.avg),
+    obp:battingAvgValue(s.obp),
+    slg:battingAvgValue(s.slg),
+    ops:battingAvgValue(s.ops),
+    hits:battingNumber(s.hits),
+    doubles:battingNumber(s.doubles),
+    triples:battingNumber(s.triples),
+    homeRuns:battingNumber(s.homeRuns),
+    runs:battingNumber(s.runs),
+    rbi:battingNumber(s.rbi),
+    walks:battingNumber(s.baseOnBalls),
+    strikeOuts:battingNumber(s.strikeOuts),
+    stolenBases:battingNumber(s.stolenBases),
+    source:"MLB 官方本季"
+  };
+
+  playerCache.set(key,v);
+  return v;
+}
+
+/* MLB 官方球員最近 10 場打擊。
+   使用 gameLog，而不是用本季數據假裝成近況。
+*/
+async function hitterRecent10(id){
+  if(!id)return null;
+
+  const key=`hitter-recent10-${id}-${selectedDate}`;
+  if(playerCache.has(key))return playerCache.get(key);
+
+  const season=new Date().getFullYear();
+
+  const d=await json(
+    `${MLB_API}/people/${id}/stats?stats=gameLog&group=hitting&season=${season}`,
+    12000
+  ).catch(()=>null);
+
+  const splits=d?.stats?.[0]?.splits||[];
+
+  const games=splits
+    .filter(x=>x?.stat)
+    .sort((a,b)=>{
+      const da=new Date(a.date||0).getTime();
+      const db=new Date(b.date||0).getTime();
+      return db-da;
+    })
+    .slice(0,10);
+
+  if(games.length===0){
+    const v={
+      games:0,
+      avg:null,
+      obp:null,
+      slg:null,
+      ops:null,
+      hits:null,
+      homeRuns:null,
+      runs:null,
+      rbi:null,
+      strikeOuts:null,
+      source:"MLB 官方近10場（無資料）"
+    };
+    playerCache.set(key,v);
+    return v;
+  }
+
+  let ab=0,h=0,bb=0,hbp=0,sf=0;
+  let doubles=0,triples=0,hr=0,r=0,rbi=0,so=0;
+
+  for(const g of games){
+    const s=g.stat||{};
+
+    ab+=Number(s.atBats)||0;
+    h+=Number(s.hits)||0;
+    bb+=Number(s.baseOnBalls)||0;
+    hbp+=Number(s.hitByPitch)||0;
+    sf+=Number(s.sacFlies)||0;
+
+    doubles+=Number(s.doubles)||0;
+    triples+=Number(s.triples)||0;
+    hr+=Number(s.homeRuns)||0;
+
+    r+=Number(s.runs)||0;
+    rbi+=Number(s.rbi)||0;
+    so+=Number(s.strikeOuts)||0;
+  }
+
+  const singles=h-doubles-triples-hr;
+  const totalBases=
+    singles+
+    doubles*2+
+    triples*3+
+    hr*4;
+
+  const avg=ab>0?h/ab:null;
+
+  const obpDen=
+    ab+
+    bb+
+    hbp+
+    sf;
+
+  const obp=obpDen>0?(h+bb+hbp)/obpDen:null;
+  const slg=ab>0?totalBases/ab:null;
+  const ops=
+    obp!=null&&slg!=null
+      ?obp+slg
+      :null;
+
+  const v={
+    games:games.length,
+    avg,
+    obp,
+    slg,
+    ops,
+    hits:h,
+    homeRuns:hr,
+    runs:r,
+    rbi,
+    strikeOuts:so,
+    source:games.length>=10
+      ?"MLB 官方近10場實際比賽"
+      :"MLB 官方近10場（資料不足10場）"
+  };
+
+  playerCache.set(key,v);
+  return v;
+}
+
+/* MLB 官方左右投拆分。
+   sitCodes:
+   vr = vs RHP
+   vl = vs LHP
+
+   如果 MLB API 沒有回傳拆分資料，就保持 null，
+   絕不拿其他資料猜一個數字。
+*/
+async function hitterSplit(id,hand){
+  if(!id||!hand)return null;
+
+  const h=String(hand).toUpperCase().startsWith("L")?"L":"R";
+  const key=`hitter-split-${id}-${h}-${new Date().getFullYear()}`;
+
+  if(playerCache.has(key))return playerCache.get(key);
+
+  const sitCode=h==="L"?"vl":"vr";
+  const season=new Date().getFullYear();
+
+  const d=await json(
+    `${MLB_API}/people/${id}/stats?stats=statSplits&group=hitting&season=${season}&sitCodes=${sitCode}`,
+    12000
+  ).catch(()=>null);
+
+  const splits=d?.stats?.[0]?.splits||[];
+
+  let s=null;
+
+  if(splits.length){
+    s=splits[0]?.stat||null;
+  }
+
+  /* 某些 MLB API 回傳結構可能把 stat 放在 stats 第一層，
+     因此再做一次保守備援，但仍只接受 MLB 官方回傳。 */
+  if(!s){
+    s=d?.stats?.[0]?.stat||null;
+  }
+
+  const v=s?{
+    avg:battingAvgValue(s.avg),
+    obp:battingAvgValue(s.obp),
+    slg:battingAvgValue(s.slg),
+    ops:battingAvgValue(s.ops),
+    pa:battingNumber(s.plateAppearances),
+    ab:battingNumber(s.atBats),
+    hits:battingNumber(s.hits),
+    homeRuns:battingNumber(s.homeRuns),
+    runs:battingNumber(s.runs),
+    rbi:battingNumber(s.rbi),
+    strikeOuts:battingNumber(s.strikeOuts),
+    walks:battingNumber(s.baseOnBalls),
+    source:`MLB 官方對${h==="L"?"左":"右"}投拆分`
+  }:{
+    avg:null,
+    obp:null,
+    slg:null,
+    ops:null,
+    pa:null,
+    ab:null,
+    hits:null,
+    homeRuns:null,
+    runs:null,
+    rbi:null,
+    strikeOuts:null,
+    walks:null,
+    source:"MLB 官方拆分資料不足"
+  };
+
+  playerCache.set(key,v);
+  return v;
+}
+
+/* 依照今天對手先發投手的投球慣用手，
+   一次取得整條先發打線的：
+   本季 + 近10場 + 對應左右投拆分。
+*/
+async function buildOfficialHitterData(feedData,side,opposingPitcherHand){
+  const lineup=officialLineup(feedData,side);
+
+  if(!lineup.length){
+    return {
+      lineup:[],
+      announced:false,
+      hitters:[],
+      source:"MLB 官方打線尚未公布"
+    };
+  }
+
+  const hitters=await Promise.all(
+    lineup.map(async p=>{
+      const [season,recent,split]=await Promise.all([
+        hitterSeason(p.id),
+        hitterRecent10(p.id),
+        hitterSplit(p.id,opposingPitcherHand)
+      ]);
+
+      return {
+        ...p,
+        season,
+        recent,
+        split
+      };
+    })
+  );
+
+  return {
+    lineup,
+    announced:true,
+    hitters,
+    pitcherHand:opposingPitcherHand||null,
+    source:"MLB 官方"
+  };
+}
+
+/* 計算今天實際 1~9 棒的整體打線指標。
+   沒有資料的打者不會被當成 0，而是排除在平均值之外。
+*/
+function lineupSummary(hitterData){
+  const hitters=hitterData?.hitters||[];
+
+  if(!hitters.length){
+    return {
+      count:0,
+      avg:null,
+      ops:null,
+      recentOps:null,
+      splitOps:null,
+      homeRuns:null,
+      source:"官方打線尚未公布"
+    };
+  }
+
+  const avgOf=(arr,key)=>{
+    const a=arr
+      .map(x=>Number(x?.[key]))
+      .filter(Number.isFinite);
+
+    return a.length
+      ? a.reduce((sum,n)=>sum+n,0)/a.length
+      : null;
+  };
+
+  return {
+    count:hitters.length,
+
+    avg:avgOf(
+      hitters.map(x=>x.season),
+      "avg"
+    ),
+
+    ops:avgOf(
+      hitters.map(x=>x.season),
+      "ops"
+    ),
+
+    recentOps:avgOf(
+      hitters.map(x=>x.recent),
+      "ops"
+    ),
+
+    splitOps:avgOf(
+      hitters.map(x=>x.split),
+      "ops"
+    ),
+
+    homeRuns:hitters.reduce(
+      (sum,x)=>sum+(Number(x.season?.homeRuns)||0),
+      0
+    ),
+
+    source:"MLB 官方今日實際打線"
+  };
+}
 /* ---------------- PlaySport ----------------
    GitHub Pages 本身無法穩定直接跨網域抓 PlaySport。
    依序嘗試公開 CORS proxy；若 proxy 不可用，頁面仍保留 MLB 官方資料。
@@ -777,14 +1736,308 @@ function pitcherHTML(title,p,pstats){
   </div></div>`;
 }
 async function renderGame(g,ps,live,feedData){
-  let a=g.teams.away,h=g.teams.home,ac=code(a),hc=code(h),[status,cls]=gameStatus(g);
-  let ap=a.probablePitcher?await pitcher(a.probablePitcher.id):null,hp=h.probablePitcher?await pitcher(h.probablePitcher.id):null;
-  let aStats=await teamStats(a.team.id),hStats=await teamStats(h.team.id);
-  let [aRecent,hRecent,aBull,hBull]=await Promise.all([recentTeamStats(a.team.id),recentTeamStats(h.team.id),recentBullpenStats(a.team.id),recentBullpenStats(h.team.id)]);
-  let p=findPS(ps,g);
+  let a=g.teams.away,
+    h=g.teams.home,
+    ac=code(a),
+    hc=code(h),
+    [status,cls]=gameStatus(g);
+
+  function officialAnalysisHTML(
+  g,
+  model,
+  away,
+  home,
+  awayPitcher,
+  homePitcher,
+  awayLineup,
+  homeLineup,
+  weather
+){
+  if(!model){
+    return `<div class="section">
+      <div class="section-title">勝負分析</div>
+      <div class="muted">MLB 官方資料不足，暫時無法建立完整模型。</div>
+    </div>`;
+  }
+
+  const awayPct=Math.round(model.awayWin*100);
+  const homePct=Math.round(model.homeWin*100);
+
+  const awayRuns=Number(model.awayRuns||0);
+  const homeRuns=Number(model.homeRuns||0);
+
+  const total=model.totalRuns;
+
+  const pickAway=model.awayWin>=model.homeWin;
+
+  /*
+    Confidence 不直接等於勝率。
+    以兩隊模型差距產生保守信心度。
+  */
+  const gap=Math.abs(model.awayWin-model.homeWin);
+
+  const confidence=Math.round(
+    clamp(
+      50+gap*100*0.75,
+      50,
+      92
+    )
+  );
+
+  const winner=pickAway?away:home;
+
+  const awayName=teamNames[code(away)]||away.team?.name||"客隊";
+  const homeName=teamNames[code(home)]||home.team?.name||"主隊";
+
+  return `
+    <div class="section">
+      <div class="section-title">勝負分析</div>
+
+      <div class="prediction-box">
+
+        <div class="prediction-main">
+          <div class="muted">MLB 官方模型預測</div>
+
+          <div class="prediction-winner">
+            ${esc(teamNames[code(winner)]||winner.team?.name||"-")}
+          </div>
+
+          <div class="prediction-confidence">
+            模型信心 ${confidence}%
+          </div>
+        </div>
+
+        <div class="two">
+
+          <div class="pitch">
+            <b>${esc(awayName)}</b>
+
+            <div class="statgrid">
+              <div class="stat">
+                <span>勝率</span>
+                <b>${awayPct}%</b>
+              </div>
+
+              <div class="stat">
+                <span>預測得分</span>
+                <b>${awayRuns.toFixed(1)}</b>
+              </div>
+
+              <div class="stat">
+                <span>模型強度</span>
+                <b>${model.awayStrength.toFixed(2)}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="pitch">
+            <b>${esc(homeName)}</b>
+
+            <div class="statgrid">
+              <div class="stat">
+                <span>勝率</span>
+                <b>${homePct}%</b>
+              </div>
+
+              <div class="stat">
+                <span>預測得分</span>
+                <b>${homeRuns.toFixed(1)}</b>
+              </div>
+
+              <div class="stat">
+                <span>模型強度</span>
+                <b>${model.homeStrength.toFixed(2)}</b>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="score-prediction">
+          預測比分：
+          <b>${awayRuns.toFixed(1)} - ${homeRuns.toFixed(1)}</b>
+        </div>
+
+        <div class="muted" style="margin-top:8px">
+          預估總得分 ${Number(total||0).toFixed(1)}
+          ｜資料來源：MLB 官方
+        </div>
+
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">模型依據</div>
+
+      <div class="two">
+
+        <div class="pitch">
+          <b>客隊</b>
+          <div class="muted">
+            官方打線：
+            ${awayLineup?.length
+              ? `已取得 ${awayLineup.length} 名打者`
+              : "尚未公布"}
+          </div>
+
+          <div class="muted">
+            先發：
+            ${awayPitcher?.season?.era!=null
+              ? `ERA ${awayPitcher.season.era}`
+              : "資料不足"}
+          </div>
+
+          <div class="muted">
+            近10次先發：
+            ${awayPitcher?.recent10?.games
+              ? `${awayPitcher.recent10.games} 場`
+              : "資料不足"}
+          </div>
+        </div>
+
+        <div class="pitch">
+          <b>主隊</b>
+          <div class="muted">
+            官方打線：
+            ${homeLineup?.length
+              ? `已取得 ${homeLineup.length} 名打者`
+              : "尚未公布"}
+          </div>
+
+          <div class="muted">
+            先發：
+            ${homePitcher?.season?.era!=null
+              ? `ERA ${homePitcher.season.era}`
+              : "資料不足"}
+          </div>
+
+          <div class="muted">
+            近10次先發：
+            ${homePitcher?.recent10?.games
+              ? `${homePitcher.recent10.games} 場`
+              : "資料不足"}
+          </div>
+        </div>
+
+      </div>
+
+      <div class="muted" style="margin-top:7px">
+        模型同時參考官方打線、打者近期狀態、
+        左右投拆分、先發投手、近10次先發、
+        球隊近期攻擊、牛棚及比賽環境。
+      </div>
+    </div>
+  `;
+}
+
+/* MLB 官方先發投手：球季 + 近10次先發 */
+let [ap,hp,aStats,hStats,aRecent,hRecent,aBull,hBull]=await Promise.all([
+  a.probablePitcher
+    ? buildOfficialPitcherData(a.probablePitcher.id)
+    : null,
+
+  h.probablePitcher
+    ? buildOfficialPitcherData(h.probablePitcher.id)
+    : null,
+
+  teamStats(a.team.id),
+  teamStats(h.team.id),
+
+  recentTeamStats(a.team.id),
+  recentTeamStats(h.team.id),
+
+  recentBullpenStats(a.team.id),
+  recentBullpenStats(h.team.id)
+]);
+
+/* MLB 官方今日實際打線 */
+const awayPitcherHand=
+  hp?.season?.throws?.code||
+  hp?.season?.throws?.hand?.code||
+  hp?.season?.pitchHand?.code||
+  hp?.season?.pitchHand?.description||
+  null;
+
+const homePitcherHand=
+  ap?.season?.throws?.code||
+  ap?.season?.throws?.hand?.code||
+  ap?.season?.pitchHand?.code||
+  ap?.season?.pitchHand?.description||
+  null;
+
+const awayLineup=await buildOfficialHitterData(
+  feedData?.[g.gamePk]||feedData?.[String(g.gamePk)]||null,
+  "away",
+  awayPitcherHand
+).catch(()=>null);
+
+const homeLineup=await buildOfficialHitterData(
+  feedData?.[g.gamePk]||feedData?.[String(g.gamePk)]||null,
+  "home",
+  homePitcherHand
+).catch(()=>null);
+ let p=findPS(ps,g);
+
+/*
+  PlaySport 資料僅暫時保留給舊畫面相容性。
+  新模型不再使用 p 的任何賠率、百分比或預測結果。
+*/
+
+const weather=
+  extractWeather(
+    feedData?.[g.gamePk]||
+    feedData?.[String(g.gamePk)]
+  );
+
+const officialModel=buildOfficialPredictionModel({
+  awayStats:aStats,
+  homeStats:hStats,
+
+  awayRecent:aRecent,
+  homeRecent:hRecent,
+
+  awayBullpen:aBull,
+  homeBullpen:hBull,
+
+  awayLineup,
+  homeLineup,
+
+  awayPitcher:ap,
+  homePitcher:hp,
+
+  weather
+});
+
+  const officialPrediction={
+  winner:officialModel
+    ? (
+        officialModel.awayWin>=officialModel.homeWin
+          ? ac
+          : hc
+      )
+    : null,
+
+  confidence:officialModel
+    ? Math.round(
+        Math.max(
+          officialModel.awayWin,
+          officialModel.homeWin
+        )*100
+      )
+    : null,
+
+  awayWin:officialModel?.awayWin??null,
+  homeWin:officialModel?.homeWin??null,
+
+  awayRuns:officialModel?.awayRuns??null,
+  homeRuns:officialModel?.homeRuns??null,
+
+  totalRuns:officialModel?.totalRuns??null,
+
+  modelVersion:"MLB_OFFICIAL_V3"
+};
   let ls=live?.[g.gamePk]||live?.[g.gamePk.toString()]||{};
   let liveA=ls.r?.[0]??a.score??"-",liveH=ls.r?.[1]??h.score??"-";
-  let weather=extractWeather(feedData?.[g.gamePk]||feedData?.[String(g.gamePk)]);
   let inning=ls.gs?.ss||ls.gs?.i?`第 ${ls.gs.i} 局 ${ls.gs.ss||""}`:"";
   return `<article class="game-card">
     <div class="game-top"><div><div class="game-time">${timeTW(g)}</div><div class="muted">${g.gamePk} · ${ac}@${hc}</div></div><div class="status ${cls}">${status}</div></div>
@@ -795,7 +2048,7 @@ async function renderGame(g,ps,live,feedData){
     </div>
     <button class="detail-toggle" type="button" onclick="toggleGameDetails(this)">▼ 展開詳細資料</button>
     <div class="game-details">
-    <div class="section"><div class="section-title">先發投手</div><div class="two">${pitcherHTML("客隊先發",a.probablePitcher,ap)}${pitcherHTML("主隊先發",h.probablePitcher,hp)}</div></div>
+   <div class="section"><div class="section-title">先發投手</div><div class="two">${pitcherHTML("客隊先發",a.probablePitcher,ap?.season)}${pitcherHTML("主隊先發",h.probablePitcher,hp?.season)}</div></div>
     <div class="section"><div class="section-title">團隊打擊</div><div class="two">
       <div class="pitch"><b>${teamNames[ac]||ac}</b><div class="statgrid"><div class="stat"><span>AVG</span><b>${aStats.avg}</b></div><div class="stat"><span>OPS</span><b>${aStats.ops}</b></div><div class="stat"><span>R</span><b>${aStats.runs}</b></div></div></div>
       <div class="pitch"><b>${teamNames[hc]||hc}</b><div class="statgrid"><div class="stat"><span>AVG</span><b>${hStats.avg}</b></div><div class="stat"><span>OPS</span><b>${hStats.ops}</b></div><div class="stat"><span>R</span><b>${hStats.runs}</b></div></div></div>
@@ -815,7 +2068,17 @@ async function renderGame(g,ps,live,feedData){
     </div><div class="muted" style="margin-top:7px">只有 MLB feed/live 實際回傳的環境資料才會進入大小分評估；沒有資料不補值。</div></div>
     ${dataHealth(g,p,ap,hp,aStats,hStats,aRecent,hRecent,weather,aBull,hBull)}
     </div>
-    <div class="analysis">${analysis(g,p,aStats,hStats,ap,hp,aRecent,hRecent,weather,aBull,hBull)}</div>
+    <div class="analysis">${officialAnalysisHTML(
+  g,
+  officialModel,
+  a,
+  h,
+  ap,
+  hp,
+  awayLineup,
+  homeLineup,
+  weather
+)}</div>
   </article>`;
 }
 async function load(){
