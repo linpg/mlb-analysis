@@ -1,0 +1,36 @@
+name: Patch official MLB model v6
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index.html
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          marker='document.getElementById("prev").onclick=()=>{selectedDate=addDays(selectedDate,-1);load()};'
+          if 'MLB_OFFICIAL_MODEL_DATA_V6' in s:
+              raise SystemExit(0)
+          if marker not in s:
+              raise SystemExit('marker not found')
+          patch=base64.b64decode('LyogTUxCX09GRklDSUFMX01PREVMX0RBVEFfVjYgKi8KKCgpPT57Y29uc3QgVD13aW5kb3cudGVhbVN0YXRzLEI9d2luZG93LmJ1aWxkT2ZmaWNpYWxQcmVkaWN0aW9uTW9kZWwsQz1uZXcgTWFwKCksTj14PT5OdW1iZXIuaXNGaW5pdGUoK3gpPyt4Om51bGw7CmFzeW5jIGZ1bmN0aW9uIFMoaWQpe2NvbnN0IHk9c2VsZWN0ZWREYXRlLnNsaWNlKDAsNCksaz1pZCsnLScreTtpZihDLmhhcyhrKSlyZXR1cm4gQy5nZXQoayk7Y29uc3QgW2EsYl09YXdhaXQgUHJvbWlzZS5hbGwoW2pzb24oYCR7TUxCX0FQSX0vdGVhbXMvJHtpZH0vc3RhdHM/c3RhdHM9c3RhdFNwbGl0cyZncm91cD1oaXR0aW5nJnNlYXNvbj0ke3l9JnNpdENvZGVzPXZyYCksanNvbihgJHtNTEJfQVBJfS90ZWFtcy8ke2lkfS9zdGF0cz9zdGF0cz1zdGF0U3BsaXRzJmdyb3VwPWhpdHRpbmcmc2Vhc29uPSR7eX0mc2l0Q29kZXM9dmxgKV0pO2NvbnN0IHA9eD0+eD8uc3RhdHM/LlswXT8uc3BsaXRzPy5bMF0/LnN0YXR8fHt9LHI9cChhKSxsPXAoYiksej17dnNSSFA6e2F2ZzpOKHIuYXZnKSxvcHM6TihyLm9wcyl9LHZzTEhQOnthdmc6TihsLmF2Zyksb3BzOk4obC5vcHMpfSxzb3VyY2U6J01MQiBTdGF0cyBBUEknfTtDLnNldChrLHopO3JldHVybiB6fQp3aW5kb3cudGVhbVN0YXRzPWFzeW5jIGlkPT4oey4uLmF3YWl0IFQoaWQpLG9mZmljaWFsU3BsaXRzOmF3YWl0IFMoaWQpfSk7CndpbmRvdy5idWlsZE9mZmljaWFsUHJlZGljdGlvbk1vZGVsPWFyZ3M9Pntjb25zdCBtPUIoYXJncyksYT1hcmdzLmF3YXlTdGF0c3x8e30saD1hcmdzLmhvbWVTdGF0c3x8e30sZj10PT57Y29uc3Qgcj1OKHQub2ZmaWNpYWxTcGxpdHM/LnZzUkhQPy5vcHMpLGw9Tih0Lm9mZmljaWFsU3BsaXRzPy52c0xIUD8ub3BzKSxvPXI/P2w7cmV0dXJuIG89PW51bGw/MTpNYXRoLm1heCguOTcsTWF0aC5taW4oMS4wMywxKyhvLS43NSkqLjEyKSl9O20uYXdheVN0cmVuZ3RoKj1mKGEpO20uaG9tZVN0cmVuZ3RoKj1mKGgpO2NvbnN0IHE9bS5hd2F5U3RyZW5ndGgvKG0uYXdheVN0cmVuZ3RoK20uaG9tZVN0cmVuZ3RoKTttLmF3YXlXaW49TWF0aC5tYXgoLjA1LE1hdGgubWluKC45NSwuNSsocS0uNSkqLjkyKSk7bS5ob21lV2luPTEtbS5hd2F5V2luO20uYXdheVJ1bnM9TWF0aC5tYXgoMS41LE1hdGgubWluKDksbS5hd2F5UnVucypmKGEpKSk7bS5ob21lUnVucz1NYXRoLm1heCgxLjUsTWF0aC5taW4oOSxtLmhvbWVSdW5zKmYoaCkpKTttLnRvdGFsUnVucz1tLmF3YXlSdW5zK20uaG9tZVJ1bnM7bS5vZmZpY2lhbEVuaGFuY2VtZW50PXthd2F5OmEub2ZmaWNpYWxTcGxpdHN8fG51bGwsaG9tZTpoLm9mZmljaWFsU3BsaXRzfHxudWxsLHNvdXJjZTonTUxCIFN0YXRzIEFQSSd9O3JldHVybiBtfX0pKCk7').decode()
+          p.write_text(s.replace(marker,patch+marker,1),encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'feat: add verified MLB official model inputs' || exit 0
+          git push
