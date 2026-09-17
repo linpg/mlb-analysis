@@ -1,0 +1,192 @@
+name: Fix MLB model once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-mlb-model.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore base and patch only MLB model/display
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=f9b39bfc71949230ad9cf358a660640d7ef96342
+          git checkout "$BASE" -- index.html
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          # 1) Keep a real games field available to every score calculation.
+          s=s.replace(
+              'let v={avg:s.avg??null,ops:s.ops??null,runs:s.runs??null,games:s.gamesPlayed??null,obp:s.obp??null,slg:s.slg??null,source:"MLB 官方本季"};',
+              'let v={avg:s.avg??null,ops:s.ops??null,runs:s.runs??null,games:s.gamesPlayed??null,gamesPlayed:s.gamesPlayed??null,obp:s.obp??null,slg:s.slg??null,source:"MLB 官方本季"};'
+          )
+
+          # 2) The official lineup function returns {lineup, hitters}; make the model consume hitters.
+          old='function lineupAttackScore(hitterData){\n  if(!hitterData?.length) return null;'
+          new='function lineupAttackScore(hitterData){\n  const hitters=Array.isArray(hitterData)?hitterData:(hitterData?.hitters||[]);\n  if(!hitters.length) return null;'
+          if old not in s: raise SystemExit('lineupAttackScore anchor not found')
+          s=s.replace(old,new,1)
+          s=s.replace('  for(const h of hitterData){','  for(const h of hitters){',1)
+
+          # 3) Replace the score projection with the previously requested hierarchy:
+          # season scoring + recent-10 scoring + confirmed lineup, then opposing starter/bullpen,
+          # then a small environment/home-field adjustment. Missing data is never fabricated.
+          start=s.index('/* 預期得分 */')
+          end=s.index('/* 完整官方模型 */', start)
+          projected=r'''/* 預期得分：只使用 MLB 官方真實資料，依序整合本季、近10場、今日實際打線、對方先發、牛棚與環境。 */
+function projectedRuns({teamStatsData,recentData,lineupData,opposingPitcher,opposingBullpen,environment,isHome}){
+  const seasonRPG=Number(teamStatsData?.runs)/Math.max(Number(teamStatsData?.games)||1,1);
+  const recentRPG=Number(recentData?.runs)/Math.max(Number(recentData?.games)||1,1);
+
+  const bases=[];
+  if(Number.isFinite(seasonRPG))bases.push({v:seasonRPG,w:0.45});
+  if(Number.isFinite(recentRPG))bases.push({v:recentRPG,w:0.35});
+
+  let runs=bases.length
+    ? bases.reduce((a,x)=>a+x.v*x.w,0)/bases.reduce((a,x)=>a+x.w,0)
+    : 4.5;
+
+  const lineupOPS=lineupAttackScore(lineupData);
+  if(Number.isFinite(lineupOPS)){
+    // 實際先發打線佔 20%；不公布打線時不硬補。
+    runs*=clamp(1+((lineupOPS-0.750)/0.750)*0.20,0.90,1.12);
+  }
+
+  const starter=combinedPitcherScore(opposingPitcher);
+  if(starter!=null){
+    // starter score >1 代表壓制較強，因此反向作用於得分。
+    runs*=clamp(1/Math.max(starter,0.70),0.82,1.20);
+  }
+
+  const bullpen=bullpenScore(opposingBullpen);
+  if(Number.isFinite(bullpen))runs*=clamp(1/Math.max(bullpen,0.75),0.90,1.10);
+
+  runs*=environmentScore(environment);
+  if(isHome)runs*=1.025;
+
+  return clamp(runs,1.5,9.0);
+}
+
+'''
+          s=s[:start]+projected+s[end:]
+
+          # 4) Make the environment factor actually use rain/strong wind when MLB feed supplies it.
+          old_env_start=s.index('function environmentScore(weather){')
+          old_env_end=s.index('\n}\n\n\n/* 球隊整體攻擊', old_env_start)+2
+          env=r'''function environmentScore(weather){
+  if(!weather)return 1;
+  let factor=1;
+  const temp=num(weather.temp,NaN);
+  const wind=num(weather.wind,NaN);
+  const condition=String(weather.condition||'').toLowerCase();
+  const windText=String(weather.windText||'').toLowerCase();
+
+  if(Number.isFinite(temp)){
+    if(temp<45)factor*=0.97;
+    else if(temp>=85)factor*=1.03;
+  }
+
+  // 只有 MLB feed 明確寫出降雨/雨勢時才修正，不自行猜測。
+  if(/rain|shower|drizzle|thunderstorm|雨/.test(condition))factor*=0.97;
+
+  // 強風只有在 feed 明確包含 in/out 時才加入方向性修正；沒有方向就只做極小幅度修正。
+  if(Number.isFinite(wind) && wind>=20){
+    if(/\bout\b|blowing out|外吹/.test(windText))factor*=1.035;
+    else if(/\bin\b|blowing in|內吹/.test(windText))factor*=0.965;
+    else factor*=0.99;
+  }
+
+  return clamp(factor,0.90,1.08);
+}'''
+          s=s[:old_env_start]+env+s[old_env_end:]
+
+          # 5) The official analysis must show the same prediction record as the model,
+          # including a real final-game hit/miss badge.
+          astart=s.index('  function officialAnalysisHTML(')
+          aend=s.index('\n}\n\n/* MLB 官方先發投手', astart)+2
+          analysis=r'''  function officialAnalysisHTML(g,model,away,home,awayPitcher,homePitcher,awayLineup,homeLineup,weather){
+  if(!model){
+    return `<div class="section"><div class="section-title">勝負分析</div><div class="muted">MLB 官方資料不足，暫時無法建立完整模型。</div></div>`;
+  }
+
+  const awayPct=Math.round(model.awayWin*100);
+  const homePct=Math.round(model.homeWin*100);
+  const awayRuns=Number(model.awayRuns);
+  const homeRuns=Number(model.homeRuns);
+  const total=model.totalRuns;
+  const winnerSide=model.awayWin>model.homeWin?'away':model.homeWin>model.awayWin?'home':'tie';
+  const pickAway=winnerSide==='away';
+  const winner=pickAway?away:home;
+  const gap=Math.abs(model.awayWin-model.homeWin);
+  const confidence=Math.round(clamp(50+gap*100*0.75,50,92));
+  const awayName=teamNames[code(away)]||away.team?.name||'客隊';
+  const homeName=teamNames[code(home)]||home.team?.name||'主隊';
+  const pred={winnerSide,confidence,predA:awayRuns,predH:homeRuns,total,settled:g.status?.abstractGameState==='Final'};
+
+  const statusBadge=resultBadges(g,pred);
+  return `
+    <div class="section">
+      <div class="section-title">勝負分析</div>
+      ${statusBadge}
+      <div class="prediction-box">
+        <div class="prediction-main">
+          <div class="muted">MLB 官方模型預測</div>
+          <div class="prediction-winner">${esc(teamNames[code(winner)]||winner.team?.name||'-')}</div>
+          <div class="prediction-confidence">模型信心 ${confidence}%</div>
+        </div>
+        <div class="two">
+          <div class="pitch"><b>${esc(awayName)}</b><div class="statgrid"><div class="stat"><span>勝率</span><b>${awayPct}%</b></div><div class="stat"><span>預測得分</span><b>${awayRuns.toFixed(1)}</b></div><div class="stat"><span>模型強度</span><b>${model.awayStrength.toFixed(2)}</b></div></div></div>
+          <div class="pitch"><b>${esc(homeName)}</b><div class="statgrid"><div class="stat"><span>勝率</span><b>${homePct}%</b></div><div class="stat"><span>預測得分</span><b>${homeRuns.toFixed(1)}</b></div><div class="stat"><span>模型強度</span><b>${model.homeStrength.toFixed(2)}</b></div></div></div>
+        </div>
+        <div class="score-prediction"><div><span class="muted">客隊預估</span><strong>${awayRuns.toFixed(1)} 分</strong></div><div class="score-dash">-</div><div><span class="muted">主隊預估</span><strong>${homeRuns.toFixed(1)} 分</strong></div><div class="score-total"><span class="muted">預估總分</span><strong>${Number(total).toFixed(1)}</strong></div></div>
+        <div class="muted" style="margin-top:8px">資料來源：MLB 官方；預測比分不使用任何盤口資料。</div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">模型依據</div>
+      <div class="two">
+        <div class="pitch"><b>客隊</b><div class="muted">官方打線：${awayLineup?.hitters?.length?`已取得 ${awayLineup.hitters.length} 名打者`:'尚未公布'}</div><div class="muted">先發：${awayPitcher?.season?.era!=null?`ERA ${awayPitcher.season.era}`:'資料不足'}</div><div class="muted">近10次先發：${awayPitcher?.recent10?.games?`${awayPitcher.recent10.games} 場`:'資料不足'}</div></div>
+        <div class="pitch"><b>主隊</b><div class="muted">官方打線：${homeLineup?.hitters?.length?`已取得 ${homeLineup.hitters.length} 名打者`:'尚未公布'}</div><div class="muted">先發：${homePitcher?.season?.era!=null?`ERA ${homePitcher.season.era}`:'資料不足'}</div><div class="muted">近10次先發：${homePitcher?.recent10?.games?`${homePitcher.recent10.games} 場`:'資料不足'}</div></div>
+      </div>
+      <div class="muted" style="margin-top:7px">比分模型依序參考本季場均得分、最近10場場均得分、今日實際先發打線、對方先發近況、對方近10場牛棚及 MLB 官方比賽環境；缺少資料不以其他資料冒充。</div>
+    </div>`;
+}
+'''
+          s=s[:astart]+analysis+s[aend:]
+
+          # 6) Use home/away context in the two score projections.
+          s=s.replace('    environment:weather\n  });\n\n  const homeRuns=projectedRuns({', '    environment:weather,\n    isHome:false\n  });\n\n  const homeRuns=projectedRuns({',1)
+          s=s.replace('    environment:weather\n  });\n\n  return {', '    environment:weather,\n    isHome:true\n  });\n\n  return {',1)
+
+          # 7) Settle the stored winner prediction after the current official game result is known.
+          anchor='  savePredictionRecord({\n    gamePk:g.gamePk,'
+          pos=s.index(anchor)
+          # Find the end of the existing if block and add settlement immediately after it.
+          marker='}\n  let ls=live?.[g.gamePk]'
+          mpos=s.index(marker,pos)
+          s=s[:mpos+2]+'  settlePredictionRecord(g);\n'+s[mpos+2:]
+
+          p.write_text(s,encoding='utf-8')
+          print('patched',len(s))
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git rm .github/workflows/fix-mlb-model.yml
+          git commit -m 'fix MLB score model and winner result display'
+          git push origin HEAD:main
