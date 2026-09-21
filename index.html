@@ -697,21 +697,47 @@ function calculateWinProbability(awayStrength,homeStrength){
 
 
 /* 預期得分：本季 + 近10場 + 今日實際先發打線 + 對方先發 + 牛棚 + 環境。 */
-function projectedRuns({teamStatsData,recentData,lineupData,opposingPitcher,opposingBullpen,environment,isHome}){
-  const seasonRPG=Number(teamStatsData?.runs)/Math.max(Number(teamStatsData?.games)||1,1);
-  const recentRPG=Number(recentData?.runs)/Math.max(Number(recentData?.games)||1,1);
+function projectedRuns({teamStatsData,recentData,lineupData,opposingPitcher,opposingBullpen,opposingRecentData,environment,isHome}){
+  // teamStats.runs 是本季「總得分」，要除以場數才是場均得分。
+  const seasonGames=Number(teamStatsData?.gamesPlayed??teamStatsData?.games)||0;
+  const seasonRuns=Number(teamStatsData?.runs);
+  const seasonRPG=Number.isFinite(seasonRuns)&&seasonGames>0?seasonRuns/seasonGames:NaN;
+
+  // recentTeamStats.runs 已經是最近10場「場均得分」，不能再除一次 games。
+  const recentRPG=Number(recentData?.runs);
+
+  // 對手最近10場失分同樣是「場均失分」，直接拿來當對手防守環境。
+  const opponentAllowedRPG=Number(opposingRecentData?.allowed);
+
   const bases=[];
   if(Number.isFinite(seasonRPG))bases.push({v:seasonRPG,w:0.45});
-  if(Number.isFinite(recentRPG))bases.push({v:recentRPG,w:0.35});
-  let runs=bases.length?bases.reduce((x,y)=>x+y.v*y.w,0)/bases.reduce((x,y)=>x+y.w,0):4.5;
+  if(Number.isFinite(recentRPG))bases.push({v:recentRPG,w:0.30});
+  if(Number.isFinite(opponentAllowedRPG))bases.push({v:opponentAllowedRPG,w:0.25});
+
+  let runs=bases.length
+    ? bases.reduce((x,y)=>x+y.v*y.w,0)/bases.reduce((x,y)=>x+y.w,0)
+    : 4.5;
+
+  // 今日已公布打線：比單純球季團隊數據更接近實際出賽陣容，但只做有限幅度修正。
   const lineupOPS=lineupAttackScore(lineupData);
-  if(Number.isFinite(lineupOPS))runs*=clamp(1+((lineupOPS-0.750)/0.750)*0.20,0.90,1.12);
+  if(Number.isFinite(lineupOPS)){
+    runs*=clamp(1+((lineupOPS-0.750)/0.750)*0.20,0.90,1.12);
+  }
+
+  // 對方先發：同時使用球季與近10次先發的官方數據。
   const starter=combinedPitcherScore(opposingPitcher);
   if(starter!=null)runs*=clamp(1/Math.max(starter,0.70),0.82,1.20);
+
+  // 對方牛棚：最近10場實際登板資料。
   const bullpen=bullpenScore(opposingBullpen);
   if(Number.isFinite(bullpen))runs*=clamp(1/Math.max(bullpen,0.75),0.90,1.10);
+
+  // MLB 官方比賽環境：目前只在有實際 feed/live 資料時修正。
   runs*=environmentScore(environment);
+
+  // 主場優勢只做很小幅度調整，避免把預估分數拉得過高。
   if(isHome)runs*=1.025;
+
   return clamp(runs,1.5,9.0);
 }
 
@@ -759,6 +785,7 @@ function buildOfficialPredictionModel({
     lineupData:awayLineup,
     opposingPitcher:homePitcher,
     opposingBullpen:homeBullpen,
+    opposingRecentData:homeRecent,
     environment:weather,
     isHome:false
   });
@@ -769,6 +796,7 @@ function buildOfficialPredictionModel({
     lineupData:homeLineup,
     opposingPitcher:awayPitcher,
     opposingBullpen:awayBullpen,
+    opposingRecentData:awayRecent,
     environment:weather,
     isHome:true
   });
